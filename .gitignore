@@ -1,0 +1,21 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+**/supabase-config.js
+**/contraseña.txt
+**/*service_role*
+**/*secret*
+
+# Local Supabase state
+supabase/.temp/
+
+# Personal course documents and unreviewed legacy scripts
+*.pdf
+/script.sql
+/migracion_*.sql
+
+# Editor and OS noise
+.vscode/
+.DS_Store
+Thumbs.db

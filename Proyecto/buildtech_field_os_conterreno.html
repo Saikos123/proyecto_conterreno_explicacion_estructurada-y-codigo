@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuildTech Field OS | ConTerreno</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        amber: {
+                            500: '#f59e0b',
+                            600: '#d97706',
+                            700: '#b45309',
+                        },
+                        slate: {
+                            850: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .kanban-col { min-height: 480px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .workspace-card > summary::-webkit-details-marker { display: none; }
+        .workspace-card { transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
+        .workspace-card:hover { border-color: #cbd5e1; box-shadow: 0 12px 28px -20px rgb(15 23 42 / 45%); }
+        .workspace-card[open] { box-shadow: 0 14px 32px -24px rgb(15 23 42 / 50%); }
+        .workspace-card[open] > summary { background: #f8fafc; }
+        .workspace-card[open] .workspace-card-chevron { transform: rotate(180deg); }
+        .role-hero-admin_general { background-image: linear-gradient(118deg, #0f172a 0%, #1e293b 58%, #0c1527 100%); }
+        .role-hero-jefe_obra { background-image: linear-gradient(118deg, #172554 0%, #1e3a8a 58%, #0c244e 100%); }
+        .role-hero-bodeguero { background-image: linear-gradient(118deg, #fcd34d 0%, #fbbf24 58%, #f59e0b 100%); }
+        .role-hero-operario_maestro { background-image: linear-gradient(118deg, #064e3b 0%, #065f46 58%, #043b32 100%); }
+        .role-metric { backdrop-filter: blur(8px); }
+        .role-hero-bodeguero .role-metric { border-color: rgb(120 53 15 / 14%); background-color: rgb(255 255 255 / 28%); }
+        .role-hero-bodeguero .role-metric:hover { border-color: rgb(120 53 15 / 25%); background-color: rgb(255 255 255 / 45%); }
+        @media (min-width: 1280px) {
+            .role-hero-jefe_obra .role-hero-layout { grid-template-columns: minmax(0, 1fr); }
+            .role-hero-jefe_obra .role-hero-metrics { order: 1; }
+            .role-hero-jefe_obra .role-hero-copy { order: 2; flex-direction: row; align-items: end; }
+            .role-hero-jefe_obra .role-hero-copy > div:first-child { max-width: 34rem; }
+            .role-hero-operario_maestro .role-hero-layout { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+            .role-hero-operario_maestro .role-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        #view-role-workspace[data-role="jefe_obra"] { --role-accent: #1d4ed8; }
+        #view-role-workspace[data-role="bodeguero"] { --role-accent: #d97706; }
+        #view-role-workspace[data-role="operario_maestro"] { --role-accent: #059669; }
+        #view-role-workspace[data-role="admin_general"] { --role-accent: #334155; }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800 bg-slate-100 antialiased selection:bg-amber-500 selection:text-white">
+
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <header class="bg-slate-900 text-white shadow-xl sticky top-0 z-40 border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+
+                <!-- Brand & Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="bg-amber-500 text-slate-950 p-2 rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center font-black">
+                        <i class="fa-solid fa-hard-hat text-lg"></i>
+                    </div>
+                    <div>
+                        <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-amber-400 bg-clip-text text-transparent">BuildTech</span>
+                        <span class="text-amber-500 font-bold text-xs block -mt-1 tracking-wider uppercase">Field OS / ConTerreno</span>
+                    </div>
+                </div>
+
+                <!-- Central Project Selector -->
+                <div class="hidden md:flex items-center gap-2 bg-slate-800/80 p-1.5 rounded-lg border border-slate-700">
+                    <i class="fa-solid fa-building-user text-amber-400 text-sm pl-2"></i>
+                    <select id="project-selector" onchange="switchProject(this.value)" class="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer pr-2">
+                        <option value="p1" class="bg-slate-900 text-white">Edificio Altavista - Obra Gruesa</option>
+                        <option value="p2" class="bg-slate-900 text-white">Residencial Los Olivos - Etapa 2</option>
+                        <option value="p3" class="bg-slate-900 text-white">Centro Logístico Norte - Bodegas</option>
+                    </select>
+                </div>
+
+                <!-- Session and assigned role -->
+                <div class="flex items-center gap-3">
+                    <div id="connection-status" role="status" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                        <span id="connection-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="connection-text" class="hidden sm:inline">Supabase</span>
+                    </div>
+                    <div id="auth-controls" class="hidden items-center gap-2">
+                        <span id="auth-user-email" class="hidden lg:inline text-[10px] text-slate-300 max-w-36 truncate"></span>
+                        <button onclick="signOut()" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-700" title="Cerrar sesión">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <nav class="bg-slate-950 border-t border-slate-800/80 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-screen-2xl mx-auto flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                <div class="flex w-full min-w-0 gap-1 overflow-x-auto custom-scrollbar py-1.5" id="nav-tabs">
+                    <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all bg-amber-500 text-slate-950 shadow-sm">
+                        <i class="fa-solid fa-chart-line"></i> Dashboard
+                    </button>
+                    <button onclick="switchTab('incidencias')" id="tab-incidencias" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i class="fa-solid fa-triangle-exclamation"></i> Bitácora Incidencias
+                        <span id="badge-incidencias" class="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">3</span>
+                    </button>
+                    <button onclick="switchTab('kanban')" id="tab-kanban" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i class="fa-solid fa-list-check"></i> Last Planner (Kanban)
+                    </button>
+                    <button onclick="switchTab('bodega')" id="tab-bodega" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i class="fa-solid fa-boxes-packing"></i> Pedidos Bodega
+                    </button>
+                    <button onclick="switchTab('role-workspace')" id="tab-role-workspace" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i class="fa-solid fa-layer-group"></i> Mi espacio
+                    </button>
+                    <button onclick="switchTab('calculadora')" id="tab-calculadora" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+                        <i class="fa-solid fa-calculator"></i> Impacto Costo/Tiempo
+                    </button>
+                </div>
+
+                <!-- Mobile project switcher toggle -->
+                <div class="w-full py-1.5 md:hidden sm:w-auto sm:shrink-0 sm:pl-2">
+                    <select id="project-selector-mobile" onchange="switchProject(this.value)" class="w-full rounded border border-slate-700 bg-slate-800 p-2 text-xs text-slate-200 sm:w-auto">
+                        <option value="p1">Edificio Altavista</option>
+                        <option value="p2">Residencial Los Olivos</option>
+                        <option value="p3">Centro Logístico</option>
+                    </select>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <div id="auth-overlay" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
+        <form id="auth-form" class="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl space-y-4">
+            <div class="text-center">
+                <div class="mx-auto mb-3 w-12 h-12 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center text-xl"><i class="fa-solid fa-hard-hat"></i></div>
+                <h2 class="text-lg font-extrabold text-slate-900">Iniciar sesión</h2>
+            </div>
+            <label class="block text-xs font-semibold text-slate-700">Correo
+                <input id="auth-email" type="email" autocomplete="username" required class="mt-1 w-full p-2.5 border border-slate-300 rounded-lg">
+            </label>
+            <label class="block text-xs font-semibold text-slate-700">Contraseña
+                <input id="auth-password" type="password" autocomplete="current-password" required class="mt-1 w-full p-2.5 border border-slate-300 rounded-lg">
+            </label>
+            <p id="auth-error" class="hidden text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2"></p>
+            <button id="auth-submit" type="submit" class="w-full py-2.5 rounded-lg bg-slate-900 text-white font-bold text-sm hover:bg-slate-800">Iniciar sesión</button>
+            <a href="index.html" class="block text-center text-xs font-semibold text-amber-700 hover:text-amber-900">Crear cuenta</a>
+        </form>
+    </div>
+
+    <main class="flex-1 max-w-screen-2xl w-full mx-auto p-3 sm:p-5 lg:p-7 space-y-5">
+
+        <!-- ================= SECTION 1: DASHBOARD ================= -->
+        <section id="view-dashboard" class="hidden space-y-6">
+
+            <!-- Welcome & Quick Actions Bar -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 flex items-center gap-2">
+                        <span>Resumen Operativo de Obra</span>
+                        <span class="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-md border border-amber-200" id="current-project-label">Edificio Altavista</span>
+                    </h1>
+                    <p class="text-xs text-slate-500 mt-1">Control de avance físico, cumplimiento semanal y trazabilidad en terreno.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="openModal('modal-incidencia')" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Reportar Hallazgo
+                    </button>
+                    <button onclick="switchTab('bodega')" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-md transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-cart-plus"></i> Solicitar Insumo
+                    </button>
+                </div>
+            </div>
+
+            <!-- KPI Cards Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                <!-- KPI 1 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-2 h-full bg-emerald-500"></div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Avance Físico Global</p>
+                            <h3 class="text-2xl font-extrabold text-slate-900 mt-1" id="kpi-avance">68.4%</h3>
+                        </div>
+                        <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+                            <i class="fa-solid fa-chart-pie text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-xs">
+                        <span class="text-emerald-600 font-bold flex items-center gap-0.5"><i class="fa-solid fa-arrow-up"></i> +2.1%</span>
+                        <span class="text-slate-400">vs semana anterior</span>
+                    </div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-2 h-full bg-amber-500"></div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">PPC (Plan Cumplido)</p>
+                            <h3 class="text-2xl font-extrabold text-slate-900 mt-1" id="kpi-ppc">82%</h3>
+                        </div>
+                        <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
+                            <i class="fa-solid fa-list-check text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-xs">
+                        <span class="text-amber-700 font-semibold">Meta Lean: &gt;85%</span>
+                        <span class="text-slate-400">| Last Planner</span>
+                    </div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Incidencias Críticas</p>
+                            <h3 class="text-2xl font-extrabold text-rose-600 mt-1" id="kpi-incidencias">3</h3>
+                        </div>
+                        <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+                            <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                        <span class="text-rose-600 font-bold">2 Calidad</span> &bull; <span>1 Seguridad</span>
+                    </div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Desvío Presupuestario</p>
+                            <h3 class="text-2xl font-extrabold text-emerald-600 mt-1" id="kpi-desvio">-2.4%</h3>
+                        </div>
+                        <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                            <i class="fa-solid fa-scale-balanced text-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                        <span class="text-emerald-600 font-semibold">Bajo lo presupuestado</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- S-Curve Chart -->
+                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">Curva S de Avance (Plan vs. Real)</h2>
+                            <p class="text-xs text-slate-500">Seguimiento semanal acumulado del proyecto</p>
+                        </div>
+                        <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-medium">Semanas 1 - 8</span>
+                    </div>
+                    <div class="h-64 sm:h-72">
+                        <canvas id="sCurveChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Incidencias Breakdown Chart -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-base font-bold text-slate-900">Hallazgos por Categoría</h2>
+                            <span class="text-xs text-slate-400">Terreno</span>
+                        </div>
+                        <div class="h-56 relative flex items-center justify-center">
+                            <canvas id="issuesChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex justify-around text-center text-xs">
+                        <div>
+                            <span class="block font-bold text-amber-600">40%</span>
+                            <span class="text-slate-400">Calidad</span>
+                        </div>
+                        <div>
+                            <span class="block font-bold text-rose-600">30%</span>
+                            <span class="text-slate-400">Seguridad</span>
+                        </div>
+                        <div>
+                            <span class="block font-bold text-sky-600">20%</span>
+                            <span class="text-slate-400">Avance</span>
+                        </div>
+                        <div>
+                            <span class="block font-bold text-purple-600">10%</span>
+                            <span class="text-slate-400">Materiales</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Timeline -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-amber-500"></i> ÚLTIMOS REGISTROS EN TERRENO
+                </h3>
+                <div class="space-y-3" id="activity-feed">
+                    <!-- Dynamic Feed items populated via JS -->
+                </div>
+            </div>
+
+        </section>
+
+
+        <!-- ================= SECTION 2: BITÁCORA DE INCIDENCIAS ================= -->
+        <section id="view-incidencias" class="hidden space-y-6">
+
+            <!-- Header bar with filter and create -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-2 overflow-x-auto">
+                    <button onclick="filterIssues('ALL')" id="filter-issue-all" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white">Todas</button>
+                    <button onclick="filterIssues('Abierta')" id="filter-issue-open" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Abiertas</button>
+                    <button onclick="filterIssues('En Proceso')" id="filter-issue-progress" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">En Proceso</button>
+                    <button onclick="filterIssues('Cerrada')" id="filter-issue-closed" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Cerradas</button>
+                </div>
+                <button onclick="openModal('modal-incidencia')" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 self-end sm:self-auto">
+                    <i class="fa-solid fa-camera"></i> Nuevo Hallazgo
+                </button>
+            </div>
+
+            <!-- Issues Cards Grid -->
+            <div id="issues-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Dynamically populated via JS -->
+            </div>
+
+        </section>
+
+
+        <!-- ================= SECTION 3: LAST PLANNER KANBAN ================= -->
+        <section id="view-kanban" class="hidden space-y-6">
+
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                        <span>Plan Semanal de Trabajo (Last Planner System)</span>
+                    </h2>
+                    <p class="text-xs text-slate-500">Compromisos operativos y liberación de restricciones en terreno.</p>
+                </div>
+                <button onclick="openModal('modal-kanban')" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 self-start sm:self-auto">
+                    <i class="fa-solid fa-plus-circle"></i> Agregar Tarea Semanal
+                </button>
+            </div>
+
+            <!-- Kanban Board Columns -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                <!-- Col 1: Por Empezar -->
+                <div class="bg-slate-200/60 p-3 rounded-2xl flex flex-col kanban-col border border-slate-300/60">
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Por Empezar
+                        </span>
+                        <span class="bg-slate-300 text-slate-800 text-[11px] font-bold px-2 py-0.5 rounded-full" id="count-todo">0</span>
+                    </div>
+                    <div id="col-todo" class="flex-1 space-y-3 overflow-y-auto custom-scrollbar p-1">
+                        <!-- Cards dynamically placed -->
+                    </div>
+                </div>
+
+                <!-- Col 2: En Ejecución -->
+                <div class="bg-blue-50/60 p-3 rounded-2xl flex flex-col kanban-col border border-blue-200/60">
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <span class="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> En Ejecución
+                        </span>
+                        <span class="bg-blue-200 text-blue-800 text-[11px] font-bold px-2 py-0.5 rounded-full" id="count-progress">0</span>
+                    </div>
+                    <div id="col-progress" class="flex-1 space-y-3 overflow-y-auto custom-scrollbar p-1">
+                        <!-- Cards dynamically placed -->
+                    </div>
+                </div>
+
+                <!-- Col 3: Bloqueada por Restricción -->
+                <div class="bg-rose-50/60 p-3 rounded-2xl flex flex-col kanban-col border border-rose-200/60">
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <span class="text-xs font-bold text-rose-800 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Restringida
+                        </span>
+                        <span class="bg-rose-200 text-rose-800 text-[11px] font-bold px-2 py-0.5 rounded-full" id="count-blocked">0</span>
+                    </div>
+                    <div id="col-blocked" class="flex-1 space-y-3 overflow-y-auto custom-scrollbar p-1">
+                        <!-- Cards dynamically placed -->
+                    </div>
+                </div>
+
+                <!-- Col 4: Completada -->
+                <div class="bg-emerald-50/60 p-3 rounded-2xl flex flex-col kanban-col border border-emerald-200/60">
+                    <div class="flex items-center justify-between mb-3 px-1">
+                        <span class="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Completada
+                        </span>
+                        <span class="bg-emerald-200 text-emerald-800 text-[11px] font-bold px-2 py-0.5 rounded-full" id="count-done">0</span>
+                    </div>
+                    <div id="col-done" class="flex-1 space-y-3 overflow-y-auto custom-scrollbar p-1">
+                        <!-- Cards dynamically placed -->
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================= SECTION 4: BODEGA Y MATERIALES ================= -->
+        <section id="view-bodega" class="hidden space-y-6">
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Catalog list -->
+                <div class="lg:col-span-2 space-y-4">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">Catálogo de Pedidos Rápido</h2>
+                            <p class="text-xs text-slate-500">Solicite insumos críticos directamente a la bodega central</p>
+                        </div>
+                        <i class="fa-solid fa-boxes-stacked text-2xl text-amber-500"></i>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" id="material-catalog">
+                        <!-- Catalog Items rendered via JS -->
+                    </div>
+                </div>
+
+                <!-- Order Cart & History -->
+                <div class="space-y-6">
+
+                    <!-- Cart summary card -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center justify-between">
+                            <span><i class="fa-solid fa-cart-shopping text-amber-500 mr-2"></i> Solicitud Actual</span>
+                            <span id="cart-count-badge" class="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">0 Ítems</span>
+                        </h3>
+
+                        <div id="cart-items-list" class="space-y-2 mb-4 max-h-48 overflow-y-auto custom-scrollbar text-xs">
+                            <p class="text-slate-400 italic text-center py-4">No hay materiales seleccionados.</p>
+                        </div>
+
+                        <!-- Form fields for request -->
+                        <div class="space-y-3 pt-3 border-t border-slate-100 text-xs">
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Sector de Entrega en Obra</label>
+                                <input type="text" id="cart-destination" maxlength="150" required placeholder="Ej: Piso 4 - Sector Norte" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Prioridad de Entrega</label>
+                                <select id="cart-urgency" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                                    <option value="Normal">Normal (24 Horas)</option>
+                                    <option value="Urgente">Urgente (Misma Jornada)</option>
+                                </select>
+                            </div>
+                            <button onclick="submitMaterialOrder()" id="btn-submit-order" disabled class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 disabled:text-slate-500 text-slate-950 font-bold rounded-xl shadow transition-all">
+                                Confirmar Pedido a Bodega
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Orders History -->
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                            <i class="fa-solid fa-truck-ramp-box text-slate-700"></i> Estado de Pedidos Solicitados
+                            <button type="button" onclick="refreshMaterialOrders()" class="ml-auto rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-bold text-slate-700">Actualizar</button>
+                        </h3>
+                        <div id="material-orders-history" class="space-y-3 max-h-72 overflow-y-auto custom-scrollbar">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================= SECTION 5: CALCULADORA DE IMPACTO ================= -->
+        <section id="view-calculadora" class="hidden space-y-6">
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <div class="p-3 bg-amber-100 text-amber-700 rounded-xl">
+                        <i class="fa-solid fa-calculator text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900">Simulador de Impacto Económico y Plazos por Paros/Retrasos</h2>
+                        <p class="text-xs text-slate-500">Mide el sobrecosto real en mano de obra, maquinaria y multas por días de paralización o desabastecimiento en terreno.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Inputs Form -->
+                <div class="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">Variables de Imprevisto en Terreno</h3>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Días de Retraso Proyectados</label>
+                        <input type="number" id="calc-days" value="3" min="1" max="90" oninput="calculateImpact()" class="w-full p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Trabajadores/Cuadrilla Detenida (N° de personas)</label>
+                        <input type="number" id="calc-workers" value="12" min="0" oninput="calculateImpact()" class="w-full p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Costo Diario Promedio por Trabajador ($)</label>
+                        <input type="number" id="calc-wage" value="45" min="0" step="5" oninput="calculateImpact()" class="w-full p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Arriendo Diario Maquinaria Detenida (Grúa/Bomba/Excv.) ($)</label>
+                        <input type="number" id="calc-machinery" value="350" min="0" step="10" oninput="calculateImpact()" class="w-full p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Multa Contractual por Día de Atraso ($)</label>
+                        <input type="number" id="calc-penalty" value="500" min="0" step="50" oninput="calculateImpact()" class="w-full p-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <!-- Outputs & Results -->
+                <div class="lg:col-span-7 space-y-6">
+
+                    <!-- Major Result Card -->
+                    <div class="bg-slate-900 text-white p-6 rounded-2xl shadow-xl border border-slate-800 space-y-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                            <span>RESULTADO ESTIMADO DE PÉRDIDA</span>
+                            <span class="bg-rose-500/20 text-rose-400 font-bold px-2.5 py-0.5 rounded-full border border-rose-500/30">Impacto Financiero Directo</span>
+                        </div>
+
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-4xl font-extrabold text-amber-400" id="res-total-cost">$ 4,170</span>
+                            <span class="text-xs text-slate-400">USD Sobrecosto Estimado</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800 text-xs">
+                            <div>
+                                <span class="text-slate-400 block">Pérdida en Mano de Obra:</span>
+                                <span class="text-base font-bold text-slate-200" id="res-labor-cost">$ 1,620</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block">Costo Maquinaria Inactiva:</span>
+                                <span class="text-base font-bold text-slate-200" id="res-machinery-cost">$ 1,050</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block">Multas por Plazo Extendido:</span>
+                                <span class="text-base font-bold text-slate-200" id="res-penalty-cost">$ 1,500</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block">Nueva Fecha Proyectada de Término:</span>
+                                <span class="text-base font-bold text-amber-400" id="res-new-date">24 Nov 2026</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lean Recommendation Box -->
+                    <div class="bg-amber-50 border border-amber-200 p-5 rounded-2xl space-y-2">
+                        <h4 class="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fa-solid fa-lightbulb text-amber-600"></i> Recomendación de Mitigación (Lean Construction)
+                        </h4>
+                        <p class="text-xs text-amber-800 leading-relaxed" id="res-recommendation">
+                            Para evitar este sobrecosto de $4,170 USD, reasigne inmediatamente a la cuadrilla de 12 trabajadores a tareas liberadas sin restricción (ej: tabiquería en Sector Sur) mientras la bodega abastece el insumo faltante.
+                        </p>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <section id="view-role-workspace" class="hidden space-y-4 sm:space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+                <div class="flex min-w-0 items-center gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-amber-400"><i class="fa-solid fa-layer-group"></i></span>
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500">Espacio de trabajo</p>
+                        <p id="role-workspace-kicker" class="mb-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-amber-700">Área de trabajo</p>
+                        <h1 id="role-workspace-title" class="truncate text-lg font-extrabold text-slate-900 sm:text-xl">Operación de obra</h1>
+                    </div>
+                </div>
+                <p id="role-workspace-description" class="max-w-xl text-xs leading-relaxed text-slate-500 sm:text-sm"></p>
+            </div>
+            <p id="role-workspace-action-status" class="hidden rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-900" role="status" aria-live="polite"></p>
+            <div id="role-workspace-content" class="space-y-4 sm:space-y-5"></div>
+        </section>
+
+    </main>
+
+
+    <!-- MODAL: NUEVO HALLAZGO / INCIDENCIA -->
+    <div id="modal-incidencia" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> Registrar Hallazgo en Terreno
+                </h3>
+                <button onclick="closeModal('modal-incidencia')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <form id="form-incidencia" onsubmit="handleCreateIssue(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Título del Hallazgo / Incidencia</label>
+                    <input type="text" id="issue-title" required placeholder="Ej: Fierro expuesto en losa sin capuchón de seguridad" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Sector / Piso</label>
+                        <input type="text" id="issue-sector" required placeholder="Piso 3 - Eje C4" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Categoría</label>
+                        <select id="issue-category" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                            <option value="Calidad">Calidad</option>
+                            <option value="Seguridad">Seguridad</option>
+                            <option value="Avance">Avance</option>
+                            <option value="Materiales">Materiales</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Prioridad</label>
+                        <select id="issue-priority" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                            <option value="Alta">Alta</option>
+                            <option value="Media">Media</option>
+                            <option value="Baja">Baja</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Asignar a Responsable</label>
+                        <input type="text" id="issue-assignee" required placeholder="Ej: Capataz Encofrados" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Descripción del Problema</label>
+                    <textarea id="issue-desc" rows="3" required placeholder="Detalle qué ocurre y la acción correctiva requerida..." class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">URL de evidencia fotográfica (opcional)</label>
+                    <input type="url" id="issue-photo" placeholder="https://..." class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-incidencia')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow">Guardar Incidencia</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NUEVA TAREA KANBAN -->
+    <div id="modal-kanban" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-amber-500"></i> Nueva Tarea Last Planner
+                </h3>
+                <button onclick="closeModal('modal-kanban')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <form id="form-kanban" onsubmit="handleCreateTask(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Título de la Actividad</label>
+                    <input type="text" id="task-title" required placeholder="Ej: Hormigonado de Muros Sector A" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Sector / Piso</label>
+                        <input type="text" id="task-sector" required placeholder="Piso 2" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Responsable</label>
+                        <input type="text" id="task-assignee" required placeholder="Cuadrilla Fierreros" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Estado Inicial</label>
+                    <select id="task-status" onchange="toggleRestrictionInput(this.value)" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                        <option value="todo">Por Empezar</option>
+                        <option value="progress">En Ejecución</option>
+                        <option value="blocked">Bloqueada por Restricción</option>
+                        <option value="done">Completada</option>
+                    </select>
+                </div>
+
+                <div id="restriction-field" class="hidden">
+                    <label class="block font-semibold text-rose-700 mb-1">Causa Raíz de Restricción</label>
+                    <select id="task-restriction" class="w-full p-2.5 border border-rose-300 bg-rose-50 rounded-xl focus:ring-2 focus:ring-rose-500 focus:outline-none text-rose-900 font-medium">
+                        <option value="Falta de Planos / RFI sin responder">Falta de Planos / RFI sin responder</option>
+                        <option value="Retraso de Proveedor de Material">Retraso de Proveedor de Material</option>
+                        <option value="Falta de Personal / Cuadrilla">Falta de Personal / Cuadrilla</option>
+                        <option value="Condiciones Climáticas / Lluvia">Condiciones Climáticas / Lluvia</option>
+                        <option value="Interferencia con Subcontrato">Interferencia con Subcontrato</option>
+                    </select>
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-kanban')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl shadow">Crear Tarea</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script>
+
+        // App State Object
+        const DEFAULT_STATE = {
+            currentProject: 'p1',
+            isOffline: false,
+            currentRole: null,
+            issues: [],
+            tasks: [],
+            cart: [],
+            materialOrders: [],
+            materialCatalog: []
+        };
+
+        const ROLE_DISPLAY = {
+            ADMIN_GENERAL: ['AD', 'Administrador del sistema', 'Cuentas y configuración'],
+            JEFE_OBRA: ['JO', 'Jefe de obra', 'Supervisión de obra'],
+            BODEGUERO: ['BO', 'Bodeguero', 'Inventario y préstamos'],
+            OPERARIO_MAESTRO: ['OP', 'Trabajador / operario', 'Recepción y solicitudes']
+        };
+
+        const ROLE_UI_PERMISSIONS = {
+            ADMIN_GENERAL: new Set(['incidencias', 'kanban', 'role-workspace']),
+            JEFE_OBRA: new Set(['incidencias', 'kanban', 'role-workspace']),
+            BODEGUERO: new Set(['role-workspace']),
+            OPERARIO_MAESTRO: new Set(['bodega', 'role-workspace'])
+        };
+        const ROLE_ENTRY_FILES = {
+            ADMIN_GENERAL: 'administrador.html',
+            JEFE_OBRA: 'jefe-obra.html',
+            BODEGUERO: 'bodeguero.html',
+            OPERARIO_MAESTRO: 'operario.html'
+        };
+        const requestedRole = new URLSearchParams(window.location.search).get('role');
+        const roleRoute = Object.hasOwn(ROLE_ENTRY_FILES, requestedRole || '') ? requestedRole : null;
+        if (roleRoute) document.title = `${ROLE_DISPLAY[roleRoute][1]} | BuildTech Field OS`;
+
+        function createDefaultState() {
+            return JSON.parse(JSON.stringify(DEFAULT_STATE));
+        }
+
+        let state = createDefaultState();
+        let activeTab = 'dashboard';
+        let currentIssueFilter = 'ALL';
+        let sCurveChartInstance = null;
+        let issuesChartInstance = null;
+        let supabaseClient = null;
+        let currentUser = null;
+        let projectMemberships = [];
+
+        const supabaseConfig = window.CONTERRENO_SUPABASE || {};
+        const supabaseConfigured = Boolean(
+            supabaseConfig.url &&
+            /^https:\/\/.+\.supabase\.co$/.test(supabaseConfig.url) &&
+            supabaseConfig.anonKey &&
+            !supabaseConfig.anonKey.startsWith('TU_')
+        );
+
+        window.onload = async function() {
+            renderAll();
+            initCharts();
+            calculateImpact();
+            document.getElementById('auth-form').addEventListener('submit', signIn);
+            showAuthOverlay();
+
+            if (!supabaseConfigured) {
+                updateConnectionStatus(false);
+                showAuthError('Configura la URL y la clave publicable de Supabase en supabase-config.js.');
+                return;
+            }
+
+            if (!window.supabase?.createClient) {
+                updateConnectionStatus(false);
+                showAuthError('No se pudo cargar el SDK de Supabase. Revisa la conexión a Internet.');
+                return;
+            }
+
+            supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+            const { data, error } = await supabaseClient.auth.getSession();
+            if (error) {
+                showAuthError(`No se pudo comprobar la sesión de Supabase: ${error.message}`);
+                return;
+            }
+
+            if (data.session) {
+                await connectAuthenticatedUser(data.session.user);
+            } else {
+                showAuthOverlay();
+            }
+        };
+
+        function saveData() {
+            localStorage.setItem('conterreno_data', JSON.stringify(state));
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+        }
+
+        function createLocalId() {
+            return window.crypto?.randomUUID ? window.crypto.randomUUID() : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        function updateConnectionStatus(connected) {
+            const btn = document.getElementById('connection-status');
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+            if (!btn || !dot || !text) return;
+
+            btn.className = connected
+                ? 'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                : 'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-rose-500/30 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30';
+            dot.className = connected
+                ? 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse'
+                : 'w-2.5 h-2.5 rounded-full bg-rose-500';
+            text.innerText = connected ? 'Supabase conectado' : 'Sin conexión';
+        }
+
+        function showAuthOverlay() {
+            document.getElementById('auth-overlay').classList.remove('hidden');
+            document.getElementById('auth-error').classList.add('hidden');
+        }
+
+        function showAuthError(message) {
+            const errorElement = document.getElementById('auth-error');
+            errorElement.textContent = message;
+            errorElement.classList.remove('hidden');
+        }
+
+        async function signIn(event) {
+            event.preventDefault();
+            if (!supabaseClient) {
+                showAuthError('Supabase no está configurado.');
+                return;
+            }
+            const submitButton = document.getElementById('auth-submit');
+            const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Conectando...';
+            document.getElementById('auth-error').classList.add('hidden');
+
+            try {
+                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) {
+                    showAuthError(`No se pudo iniciar sesión: ${error.message}`);
+                    return;
+                }
+                await connectAuthenticatedUser(data.user);
+            } catch (error) {
+                showAuthError(`No se pudo completar el inicio de sesión: ${error.message}`);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Iniciar sesión';
+            }
+        }
+
+        async function signOut() {
+            const { error } = await supabaseClient.auth.signOut();
+            if (error) {
+                showToast(`No se pudo cerrar la sesión: ${error.message}`, 'error');
+                return;
+            }
+            currentUser = null;
+            projectMemberships = [];
+            document.getElementById('auth-controls').classList.add('hidden');
+            document.getElementById('auth-controls').classList.remove('flex');
+            localStorage.removeItem('conterreno_data');
+            state = createDefaultState();
+            saveData();
+            renderAll();
+            updateConnectionStatus(false);
+            if (roleRoute) {
+                window.location.replace('index.html');
+                return;
+            }
+            showAuthOverlay();
+        }
+
+        async function connectAuthenticatedUser(user) {
+            currentUser = user;
+            try {
+                await loadUserProjects();
+            } catch (error) {
+                currentUser = null;
+                showAuthOverlay();
+                showAuthError(error.message);
+                return;
+            }
+
+            state.isOffline = false;
+            document.getElementById('auth-overlay').classList.add('hidden');
+            document.getElementById('auth-controls').classList.remove('hidden');
+            document.getElementById('auth-controls').classList.add('flex');
+            document.getElementById('auth-user-email').textContent = user.email || '';
+            updateConnectionStatus(true);
+            if (!roleRoute) {
+                window.location.replace(ROLE_ENTRY_FILES[state.currentRole] || 'index.html');
+                return;
+            }
+            if (typeof renderRoleWorkspace === 'function') renderRoleWorkspace();
+            applyRolePermissions();
+            switchTab('role-workspace');
+            showToast('Sesión conectada con Supabase.', 'success');
+        }
+
+        async function loadUserProjects() {
+            const { data: isAdmin, error: adminError } = await supabaseClient.rpc('fn_conterreno_es_administrador');
+            if (adminError) throw new Error(`No se pudo verificar el rol de la cuenta: ${adminError.message}`);
+
+            if (isAdmin) {
+                const { data, error } = await supabaseClient
+                    .from('conterreno_proyectos')
+                    .select('id,nombre,activo')
+                    .eq('activo', true)
+                    .order('nombre');
+                if (error) throw new Error(`No se pudieron cargar las obras: ${error.message}`);
+                projectMemberships = (data || []).map(project => ({
+                    id: project.id,
+                    name: project.nombre,
+                    role: 'ADMIN_GENERAL'
+                }));
+            } else {
+                const { data, error } = await supabaseClient
+                    .from('conterreno_usuarios_proyectos')
+                    .select('proyecto_id, usuarios!inner(roles!inner(codigo_rol, nombre)), conterreno_proyectos!inner(id, nombre, activo)')
+                    .eq('usuario_auth_id', currentUser.id)
+                    .eq('activo', true);
+                if (error) throw new Error(`No se pudieron cargar tus proyectos: ${error.message}`);
+
+                projectMemberships = (data || [])
+                    .filter(row => row.conterreno_proyectos?.activo)
+                    .map(row => ({
+                        id: row.proyecto_id,
+                        name: row.conterreno_proyectos.nombre,
+                        role: row.usuarios.roles.codigo_rol
+                    }));
+            }
+            if (roleRoute) {
+                projectMemberships = projectMemberships.filter(project => project.role === roleRoute);
+            }
+            if (projectMemberships.length === 0) {
+                throw new Error(roleRoute
+                    ? `La cuenta no tiene acceso a esta interfaz.`
+                    : 'Tu cuenta no tiene proyectos asignados. Un administrador debe agregarla a conterreno_usuarios_proyectos en Supabase.');
+            }
+
+            const options = projectMemberships.map(project =>
+                `<option value="${escapeHtml(project.id)}" class="bg-slate-900 text-white">${escapeHtml(project.name)}</option>`
+            ).join('');
+            document.getElementById('project-selector').innerHTML = options;
+            document.getElementById('project-selector-mobile').innerHTML = options;
+            const selectedProject = projectMemberships.find(project => project.id === state.currentProject) || projectMemberships[0];
+            state.currentProject = selectedProject.id;
+            document.getElementById('project-selector').value = selectedProject.id;
+            document.getElementById('project-selector-mobile').value = selectedProject.id;
+            applyProjectRole(selectedProject.role);
+            applyRolePermissions();
+            await loadProjectData(selectedProject.id);
+        }
+
+        async function loadProjectData(projectId) {
+            const [issuesResult, tasksResult, ordersResult, stockResult] = await Promise.all([
+                supabaseClient.from('conterreno_incidencias').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
+                supabaseClient.from('conterreno_tareas').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
+                supabaseClient.from('conterreno_pedidos_materiales')
+                    .select('id,destino,urgencia,estado,items,creado_en,motivo_resolucion')
+                    .eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
+                supabaseClient.from('conterreno_stock_materiales')
+                    .select('material_id,cantidad,conterreno_catalogo_materiales!inner(id,codigo,nombre,unidad,activo)')
+                    .eq('proyecto_id', projectId)
+                    .eq('conterreno_catalogo_materiales.activo', true)
+                    .order('material_id')
+            ]);
+            const failedResult = [issuesResult, tasksResult, ordersResult, stockResult].find(result => result.error);
+            if (failedResult) throw new Error(`No se pudieron cargar los datos del proyecto: ${failedResult.error.message}`);
+
+            state.issues = (issuesResult.data || []).map(row => ({
+                id: row.id,
+                title: row.titulo,
+                sector: row.sector,
+                category: row.categoria,
+                priority: row.prioridad,
+                status: row.estado,
+                assignee: row.responsable,
+                desc: row.descripcion,
+                date: row.fecha_reporte,
+                photo: row.foto_url || ''
+            }));
+            state.tasks = (tasksResult.data || []).map(row => ({
+                id: row.id,
+                title: row.titulo,
+                sector: row.sector,
+                assignee: row.responsable,
+                status: row.estado,
+                restriction: row.restriccion
+            }));
+            state.materialOrders = (ordersResult.data || []).map(row => ({
+                id: row.id,
+                item: (row.items || []).map(item => `${item.name || item.material_id || 'Material'} (${item.qty} ${item.unit || ''})`).join(', '),
+                sector: row.destino,
+                urgency: row.urgencia,
+                status: row.estado,
+                date: new Date(row.creado_en).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }),
+                reason: row.motivo_resolucion
+            }));
+            state.materialCatalog = (stockResult.data || []).map(row => ({
+                id: row.material_id,
+                code: row.conterreno_catalogo_materiales.codigo,
+                name: row.conterreno_catalogo_materiales.nombre,
+                unit: row.conterreno_catalogo_materiales.unidad,
+                stock: Number(row.cantidad)
+            }));
+            state.cart = [];
+            saveData();
+            document.getElementById('current-project-label').innerText =
+                projectMemberships.find(project => project.id === projectId)?.name || projectId;
+            renderAll();
+            applyRolePermissions();
+            initCharts();
+        }
+
+        function applyProjectRole(role) {
+            const [avatarText, nameText, titleText] = ROLE_DISPLAY[role] || ROLE_DISPLAY.OPERARIO_MAESTRO;
+            const avatar = document.getElementById('role-avatar');
+            const name = document.getElementById('role-name');
+            const title = document.getElementById('role-title');
+            if (avatar) avatar.innerText = avatarText;
+            if (name) name.innerText = nameText;
+            if (title) title.innerText = titleText;
+            state.currentRole = role;
+            if (typeof renderRoleWorkspace === 'function') renderRoleWorkspace();
+        }
+
+        function applyRolePermissions() {
+            if (!currentUser) return;
+            const permissions = ROLE_UI_PERMISSIONS[state.currentRole] || new Set();
+            ['dashboard', 'incidencias', 'kanban', 'bodega', 'calculadora', 'role-workspace'].forEach(tab => {
+                const button = document.getElementById(`tab-${tab}`);
+                if (button) button.classList.toggle('hidden', !permissions.has(tab));
+            });
+            const navOrder = {
+                ADMIN_GENERAL: ['role-workspace', 'incidencias', 'kanban'],
+                JEFE_OBRA: ['role-workspace', 'incidencias', 'kanban'],
+                BODEGUERO: ['role-workspace'],
+                OPERARIO_MAESTRO: ['role-workspace', 'bodega']
+            }[state.currentRole] || ['role-workspace'];
+            const navTabs = document.getElementById('nav-tabs');
+            navOrder.forEach(tab => {
+                const button = document.getElementById(`tab-${tab}`);
+                if (button) navTabs.appendChild(button);
+            });
+            const workspaceTab = document.getElementById('tab-role-workspace');
+            const workspace = ROLE_WORKSPACES[state.currentRole];
+            if (workspaceTab) {
+                workspaceTab.innerHTML = `<i class="fa-solid fa-layer-group"></i> ${workspace?.navigationLabel || 'Mi panel'}`;
+            }
+            const issueTab = document.getElementById('tab-incidencias');
+            const planTab = document.getElementById('tab-kanban');
+            const orderTab = document.getElementById('tab-bodega');
+            if (issueTab) issueTab.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Incidencias <span id="badge-incidencias" class="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">0</span>`;
+            if (planTab) planTab.innerHTML = '<i class="fa-solid fa-list-check"></i> Plan semanal';
+            if (orderTab) orderTab.innerHTML = '<i class="fa-solid fa-boxes-packing"></i> Solicitar materiales';
+            const isAdmin = state.currentRole === 'ADMIN_GENERAL';
+            const canCreateIssue = state.currentRole === 'OPERARIO_MAESTRO' || isAdmin;
+            const canManageIssues = state.currentRole === 'JEFE_OBRA' || isAdmin;
+            const canPlanTasks = state.currentRole === 'JEFE_OBRA' || isAdmin;
+            const canRequestMaterials = state.currentRole === 'OPERARIO_MAESTRO' || isAdmin;
+
+            document.querySelectorAll("button[onclick=\"openModal('modal-incidencia')\"]")
+                .forEach(button => button.classList.toggle('hidden', !canCreateIssue));
+            document.querySelectorAll("#view-dashboard button[onclick=\"switchTab('bodega')\"]")
+                .forEach(button => button.classList.toggle('hidden', !canRequestMaterials));
+            document.querySelectorAll("button[onclick=\"openModal('modal-kanban')\"]")
+                .forEach(button => button.classList.toggle('hidden', !canPlanTasks));
+            document.querySelectorAll("#issues-list-container button[onclick^=\"updateIssueStatus(\"]")
+                .forEach(button => button.classList.toggle('hidden', !canManageIssues));
+            document.querySelectorAll("#view-kanban select, #view-kanban button[onclick^=\"deleteTask(\"]")
+                .forEach(control => control.classList.toggle('hidden', !canPlanTasks));
+            document.getElementById('btn-submit-order').classList.toggle('hidden', !canRequestMaterials);
+            document.querySelectorAll("#material-catalog button").forEach(button =>
+                button.classList.toggle('hidden', !canRequestMaterials)
+            );
+        }
+
+        async function persistInsert(table, row) {
+            if (!supabaseClient || !currentUser || state.isOffline) return null;
+            const { data, error } = await supabaseClient.from(table).insert(row).select().single();
+            if (error) throw new Error(`No se pudo guardar en Supabase: ${error.message}`);
+            return data;
+        }
+
+        async function persistUpdate(table, id, changes) {
+            if (!supabaseClient || !currentUser || state.isOffline) return;
+            const { error } = await supabaseClient
+                .from(table)
+                .update(changes)
+                .eq('id', id)
+                .eq('proyecto_id', state.currentProject);
+            if (error) throw new Error(`No se pudo actualizar en Supabase: ${error.message}`);
+        }
+
+        async function persistDelete(table, id) {
+            if (!supabaseClient || !currentUser || state.isOffline) return;
+            const { error } = await supabaseClient
+                .from(table)
+                .delete()
+                .eq('id', id)
+                .eq('proyecto_id', state.currentProject);
+            if (error) throw new Error(`No se pudo eliminar en Supabase: ${error.message}`);
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+
+            const bgClass = type === 'success' ? 'bg-slate-900 text-white border-l-4 border-amber-500' :
+                            type === 'error' ? 'bg-rose-600 text-white' : 'bg-blue-600 text-white';
+
+            toast.className = `px-4 py-3 rounded-xl shadow-xl text-xs font-semibold flex items-center gap-3 transition-all duration-300 pointer-events-auto transform translate-y-2 ${bgClass}`;
+            const icon = document.createElement('i');
+            icon.className = `fa-solid ${type === 'success' ? 'fa-check-circle text-amber-400' : 'fa-info-circle'}`;
+            const text = document.createElement('span');
+            text.textContent = message;
+            toast.append(icon, text);
+
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function switchTab(tabId) {
+            if (currentUser && !ROLE_UI_PERMISSIONS[state.currentRole]?.has(tabId)) {
+                showToast('Tu rol no tiene acceso a esta sección.', 'error');
+                return;
+            }
+            const target = document.getElementById('view-' + tabId);
+            if (!target) {
+                showToast('No se encontró la sección solicitada.', 'error');
+                return;
+            }
+            activeTab = tabId;
+            document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
+            target.classList.remove('hidden');
+            window.scrollTo(0, 0);
+
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const tabId = btn.id.replace(/^tab-/, '');
+                const hidden = currentUser && !ROLE_UI_PERMISSIONS[state.currentRole]?.has(tabId);
+                btn.className = `nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800${hidden ? ' hidden' : ''}`;
+            });
+
+            const activeBtn = document.getElementById('tab-' + tabId);
+            if (activeBtn) {
+                activeBtn.className = 'nav-btn px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all bg-amber-500 text-slate-950 shadow-sm';
+            }
+
+            if(tabId === 'dashboard') {
+                setTimeout(initCharts, 50);
+            }
+        }
+
+        async function switchProject(val) {
+            const previousProject = state.currentProject;
+            state.currentProject = val;
+            document.getElementById('project-selector').value = val;
+            document.getElementById('project-selector-mobile').value = val;
+            if (currentUser && !state.isOffline) {
+                const membership = projectMemberships.find(project => project.id === val);
+                if (!membership) {
+                    showToast('No tienes acceso a ese proyecto.', 'error');
+                    state.currentProject = previousProject;
+                    return;
+                }
+                try {
+                    await loadProjectData(val);
+                    applyProjectRole(membership.role);
+                    saveData();
+                    showToast(`Proyecto activo cambiado a: ${membership.name}`, 'info');
+                } catch (error) {
+                    state.currentProject = previousProject;
+                    document.getElementById('project-selector').value = previousProject;
+                    document.getElementById('project-selector-mobile').value = previousProject;
+                    showToast(error.message, 'error');
+                }
+                return;
+            }
+
+            saveData();
+            const projectNames = {
+                p1: "Edificio Altavista - Obra Gruesa",
+                p2: "Residencial Los Olivos - Etapa 2",
+                p3: "Centro Logístico Norte - Bodegas"
+            };
+            document.getElementById('current-project-label').innerText = projectNames[val];
+            showToast(`Proyecto activo cambiado a: ${projectNames[val]}`, 'info');
+            renderAll();
+        }
+
+        function renderAll() {
+            renderDashboardActivity();
+            renderIssues();
+            renderKanban();
+            renderMaterialCatalog();
+            renderMaterialOrders();
+            renderCart();
+            updateBadges();
+            if (typeof renderRoleWorkspace === 'function') renderRoleWorkspace();
+        }
+
+        function updateBadges() {
+            const openIssuesCount = state.issues.filter(i => i.status !== 'Cerrada').length;
+            document.getElementById('badge-incidencias').innerText = openIssuesCount;
+            document.getElementById('kpi-incidencias').innerText = openIssuesCount;
+        }
+
+        function renderDashboardActivity() {
+            const feed = document.getElementById('activity-feed');
+            feed.innerHTML = `
+                <div class="flex items-start gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                    <span class="p-2 bg-amber-100 text-amber-800 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <div class="flex-1">
+                        <p class="font-bold text-slate-800">Nuevo hallazgo reportado por Inspector ITO</p>
+                        <p class="text-slate-500 text-[11px]">Piso 4 - Interferencia sanitaria detectada hace 15 mins</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+                    <span class="p-2 bg-emerald-100 text-emerald-800 rounded-lg"><i class="fa-solid fa-check"></i></span>
+                    <div class="flex-1">
+                        <p class="font-bold text-slate-800">Tarea completada en Last Planner</p>
+                        <p class="text-slate-500 text-[11px]">Hormigonado de Columnas Eje C1-C4 marcado como 100%</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initCharts() {
+            // S-Curve Chart
+            const ctx1 = document.getElementById('sCurveChart')?.getContext('2d');
+            if (ctx1) {
+                if (sCurveChartInstance) sCurveChartInstance.destroy();
+                sCurveChartInstance = new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8'],
+                        datasets: [
+                            {
+                                label: 'Avance Planificado (%)',
+                                data: [10, 22, 38, 52, 68, 80, 92, 100],
+                                borderColor: '#94a3b8',
+                                borderDash: [5, 5],
+                                backgroundColor: 'transparent',
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Avance Real Terreno (%)',
+                                data: [8, 20, 39, 50, 68.4, null, null, null],
+                                borderColor: '#d97706',
+                                backgroundColor: 'rgba(217, 119, 6, 0.1)',
+                                fill: true,
+                                tension: 0.3,
+                                borderWidth: 3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'top' } },
+                        scales: { y: { min: 0, max: 100 } }
+                    }
+                });
+            }
+
+            // Doughnut Chart
+            const ctx2 = document.getElementById('issuesChart')?.getContext('2d');
+            if (ctx2) {
+                if (issuesChartInstance) issuesChartInstance.destroy();
+                issuesChartInstance = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Calidad', 'Seguridad', 'Avance', 'Materiales'],
+                        datasets: [{
+                            data: [40, 30, 20, 10],
+                            backgroundColor: ['#d97706', '#e11d48', '#0284c7', '#9333ea']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+        }
+
+        function renderIssues() {
+            const container = document.getElementById('issues-list-container');
+            container.innerHTML = '';
+
+            const filtered = state.issues.filter(issue => {
+                if (currentIssueFilter === 'ALL') return true;
+                return issue.status === currentIssueFilter;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 italic">No hay incidencias registradas en esta categoría.</div>`;
+                return;
+            }
+
+            filtered.forEach(issue => {
+                const priorityBadge = issue.priority === 'Alta' ? 'bg-rose-100 text-rose-800' :
+                                      issue.priority === 'Media' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700';
+
+                const statusBadge = issue.status === 'Abierta' ? 'bg-rose-500 text-white' :
+                                     issue.status === 'En Proceso' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-600 text-white';
+                const photoUrl = /^https?:\/\//i.test(issue.photo || '') ? escapeHtml(issue.photo) : '';
+
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow';
+                card.innerHTML = `
+                    <div>
+                        <div class="h-36 bg-slate-100 relative overflow-hidden">
+                            ${photoUrl ? `<img src="${photoUrl}" alt="Evidencia" class="w-full h-full object-cover">` : ''}
+                            <span class="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${statusBadge}">${escapeHtml(issue.status)}</span>
+                            <span class="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-md ${priorityBadge}">${escapeHtml(issue.priority)}</span>
+                        </div>
+                        <div class="p-4 space-y-2">
+                            <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold">
+                                <span><i class="fa-solid fa-location-dot text-amber-500 mr-1"></i> ${escapeHtml(issue.sector)}</span>
+                                <span>${escapeHtml(issue.date)}</span>
+                            </div>
+                            <h3 class="font-bold text-slate-900 text-sm leading-snug">${escapeHtml(issue.title)}</h3>
+                            <p class="text-xs text-slate-600 line-clamp-2">${escapeHtml(issue.desc)}</p>
+                        </div>
+                    </div>
+                    <div class="p-4 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between text-xs">
+                        <span class="text-slate-500 font-medium"><i class="fa-solid fa-user-gear mr-1"></i> ${escapeHtml(issue.assignee)}</span>
+                        <div class="flex items-center gap-1">
+                            ${issue.status !== 'Cerrada' ?
+                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'Cerrada')" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-bold text-[11px]">
+                                    <i class="fa-solid fa-check"></i> Cerrar
+                                        </button>` : ''}` : ''
+                            }
+                            ${issue.status === 'Abierta' ?
+                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'En Proceso')" class="px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg font-bold text-[11px]">
+                                    Atender
+                                        </button>` : ''}` : ''
+                            }
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function filterIssues(status) {
+            currentIssueFilter = status;
+            document.querySelectorAll('.filter-issue-btn').forEach(btn => {
+                btn.className = "filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200";
+            });
+            renderIssues();
+        }
+
+        async function updateIssueStatus(id, newStatus) {
+            const issue = state.issues.find(i => String(i.id) === String(id));
+            if (issue) {
+                try {
+                    await persistUpdate('conterreno_incidencias', id, { estado: newStatus });
+                } catch (error) {
+                    showToast(error.message, 'error');
+                    return;
+                }
+                issue.status = newStatus;
+                saveData();
+                renderIssues();
+                updateBadges();
+                showToast(`Incidencia #${id} actualizada a: ${newStatus}`, 'success');
+            }
+        }
+
+        async function handleCreateIssue(e) {
+            e.preventDefault();
+            const issue = {
+                title: document.getElementById('issue-title').value,
+                sector: document.getElementById('issue-sector').value,
+                category: document.getElementById('issue-category').value,
+                priority: document.getElementById('issue-priority').value,
+                status: 'Abierta',
+                assignee: document.getElementById('issue-assignee').value,
+                desc: document.getElementById('issue-desc').value,
+                date: new Date().toISOString().split('T')[0],
+                photo: document.getElementById('issue-photo').value.trim()
+            };
+
+            try {
+                const savedIssue = await persistInsert('conterreno_incidencias', {
+                    proyecto_id: state.currentProject,
+                    titulo: issue.title,
+                    sector: issue.sector,
+                    categoria: issue.category,
+                    prioridad: issue.priority,
+                    estado: issue.status,
+                    responsable: issue.assignee,
+                    descripcion: issue.desc,
+                    foto_url: issue.photo || null,
+                    fecha_reporte: issue.date
+                });
+                issue.id = savedIssue?.id || createLocalId();
+            } catch (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+
+            state.issues.unshift(issue);
+            saveData();
+            closeModal('modal-incidencia');
+            document.getElementById('form-incidencia').reset();
+            renderIssues();
+            updateBadges();
+            showToast('Nuevo hallazgo guardado con éxito', 'success');
+        }
+
+        function renderKanban() {
+            const cols = {
+                todo: document.getElementById('col-todo'),
+                progress: document.getElementById('col-progress'),
+                blocked: document.getElementById('col-blocked'),
+                done: document.getElementById('col-done')
+            };
+
+            Object.values(cols).forEach(c => c.innerHTML = '');
+
+            const counts = { todo: 0, progress: 0, blocked: 0, done: 0 };
+
+            state.tasks.forEach(task => {
+                counts[task.status]++;
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2 hover:shadow transition-shadow';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between text-[10px] text-slate-500 font-semibold">
+                        <span class="bg-slate-100 px-2 py-0.5 rounded text-slate-700">${escapeHtml(task.sector)}</span>
+                        <span><i class="fa-solid fa-user text-amber-500 mr-1"></i> ${escapeHtml(task.assignee)}</span>
+                    </div>
+                    <h4 class="font-bold text-xs text-slate-900 leading-snug">${escapeHtml(task.title)}</h4>
+                    ${task.restriction ? `
+                        <div class="bg-rose-50 border border-rose-200 p-1.5 rounded-lg text-[10px] text-rose-800 font-medium flex items-center gap-1">
+                            <i class="fa-solid fa-ban text-rose-600"></i> ${escapeHtml(task.restriction)}
+                        </div>
+                    ` : ''}
+                    <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
+                        ${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<select onchange="moveTask('${escapeHtml(task.id)}', this.value)" class="text-[10px] bg-slate-50 border border-slate-200 rounded p-1 font-semibold text-slate-700 focus:outline-none">
+                            <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>Por Empezar</option>
+                            <option value="progress" ${task.status === 'progress' ? 'selected' : ''}>En Ejecución</option>
+                            <option value="blocked" ${task.status === 'blocked' ? 'selected' : ''}>Restringida</option>
+                            <option value="done" ${task.status === 'done' ? 'selected' : ''}>Completada</option>
+                        </select>
+                        <button onclick="deleteTask('${escapeHtml(task.id)}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                    </div>
+                `;
+                cols[task.status].appendChild(card);
+            });
+
+            document.getElementById('count-todo').innerText = counts.todo;
+            document.getElementById('count-progress').innerText = counts.progress;
+            document.getElementById('count-blocked').innerText = counts.blocked;
+            document.getElementById('count-done').innerText = counts.done;
+
+            // Recalculate PPC
+            const total = state.tasks.length;
+            const ppc = total > 0 ? Math.round((counts.done / total) * 100) : 0;
+            document.getElementById('kpi-ppc').innerText = ppc + '%';
+        }
+
+        async function moveTask(taskId, newStatus) {
+            const task = state.tasks.find(t => String(t.id) === String(taskId));
+            if (task) {
+                const newRestriction = newStatus === 'blocked' ? task.restriction : null;
+                try {
+                    await persistUpdate('conterreno_tareas', taskId, {
+                        estado: newStatus,
+                        restriccion: newRestriction
+                    });
+                } catch (error) {
+                    showToast(error.message, 'error');
+                    renderKanban();
+                    return;
+                }
+                task.status = newStatus;
+                task.restriction = newRestriction;
+                saveData();
+                renderKanban();
+                showToast(`Estado de tarea actualizado`, 'info');
+            }
+        }
+
+        async function deleteTask(taskId) {
+            try {
+                await persistDelete('conterreno_tareas', taskId);
+            } catch (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+            state.tasks = state.tasks.filter(t => String(t.id) !== String(taskId));
+            saveData();
+            renderKanban();
+            showToast(`Tarea eliminada`, 'info');
+        }
+
+        function toggleRestrictionInput(val) {
+            const field = document.getElementById('restriction-field');
+            if (val === 'blocked') field.classList.remove('hidden');
+            else field.classList.add('hidden');
+        }
+
+        async function handleCreateTask(e) {
+            e.preventDefault();
+            const status = document.getElementById('task-status').value;
+            const task = {
+                title: document.getElementById('task-title').value,
+                sector: document.getElementById('task-sector').value,
+                assignee: document.getElementById('task-assignee').value,
+                status: status,
+                restriction: status === 'blocked' ? document.getElementById('task-restriction').value : null
+            };
+
+            try {
+                const savedTask = await persistInsert('conterreno_tareas', {
+                    proyecto_id: state.currentProject,
+                    titulo: task.title,
+                    sector: task.sector,
+                    responsable: task.assignee,
+                    estado: task.status,
+                    restriccion: task.restriction
+                });
+                task.id = savedTask?.id || createLocalId();
+            } catch (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+
+            state.tasks.push(task);
+            saveData();
+            closeModal('modal-kanban');
+            document.getElementById('form-kanban').reset();
+            renderKanban();
+            showToast('Tarea semanal agregada al Last Planner', 'success');
+        }
+
+        function renderMaterialCatalog() {
+            const container = document.getElementById('material-catalog');
+            container.innerHTML = '';
+
+            if (!state.materialCatalog.length) {
+                container.innerHTML = `<p class="sm:col-span-2 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No hay materiales activos asignados al inventario de esta obra.</p>`;
+                return;
+            }
+
+            state.materialCatalog.forEach(mat => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between hover:border-amber-400 transition-colors';
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                            <i class="fa-solid fa-cubes-stacked text-lg"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-xs text-slate-900">${escapeHtml(mat.name)}</h4>
+                            <p class="text-[11px] text-slate-400">${escapeHtml(mat.code)} · ${escapeHtml(mat.unit)} · Disponible: ${escapeHtml(mat.stock)}</p>
+                        </div>
+                    </div>
+                    <button onclick="addToCart('${escapeHtml(mat.id)}')" class="px-3 py-1.5 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1">
+                        <i class="fa-solid fa-plus text-[10px]"></i> Pedir
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addToCart(matId) {
+            const item = state.materialCatalog.find(material => material.id === matId);
+            if (!item) return;
+
+            const existing = state.cart.find(c => c.id === matId);
+            if (existing) {
+                existing.qty++;
+            } else {
+                state.cart.push({ ...item, qty: 1 });
+            }
+            renderCart();
+            showToast(`Añadido a solicitud: ${item.name}`, 'info');
+        }
+
+        function renderCart() {
+            const list = document.getElementById('cart-items-list');
+            const submitBtn = document.getElementById('btn-submit-order');
+            const countBadge = document.getElementById('cart-count-badge');
+
+            countBadge.innerText = `${state.cart.length} Ítems`;
+
+            if (state.cart.length === 0) {
+                list.innerHTML = `<p class="text-slate-400 italic text-center py-4">No hay materiales seleccionados.</p>`;
+                submitBtn.disabled = true;
+                return;
+            }
+
+            submitBtn.disabled = false;
+            list.innerHTML = '';
+
+            state.cart.forEach((c, idx) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200';
+                row.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${escapeHtml(c.name)}</p>
+                        <p class="text-[10px] text-slate-400">${escapeHtml(c.unit)}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="number" min="0.01" step="0.01" value="${escapeHtml(c.qty)}" onchange="updateCartQty(${idx}, this.value)" class="w-16 p-1 border border-slate-300 rounded text-center font-bold text-xs">
+                        <button onclick="removeFromCart(${idx})" class="text-rose-500 hover:text-rose-700"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        function updateCartQty(idx, qty) {
+            const value = Number(qty);
+            if (!Number.isFinite(value) || value <= 0 || value > 9999999999.99) {
+                showToast('Ingresa una cantidad válida mayor que cero.', 'error');
+                state.cart[idx].qty = 1;
+            } else {
+                state.cart[idx].qty = value;
+            }
+            renderCart();
+        }
+
+        function removeFromCart(idx) {
+            state.cart.splice(idx, 1);
+            renderCart();
+        }
+
+        async function submitMaterialOrder() {
+            if (state.cart.length === 0) {
+                showToast('Agrega al menos un material antes de enviar el pedido.', 'error');
+                return;
+            }
+            const dest = document.getElementById('cart-destination').value.trim();
+            const urgency = document.getElementById('cart-urgency').value;
+            if (!dest || dest.length > 150) {
+                showToast('Indica un sector de entrega válido (máximo 150 caracteres).', 'error');
+                return;
+            }
+
+            const order = {
+                item: state.cart.map(c => `${c.name} (${c.qty} ${c.unit}${c.qty === 1 ? '' : 's'})`).join(', '),
+                sector: dest,
+                urgency: urgency,
+                status: 'Pendiente',
+                date: 'Hoy ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+
+            try {
+                if (!supabaseClient || !currentUser || state.isOffline) {
+                    throw new Error('Conecta una cuenta autorizada para enviar una solicitud.');
+                }
+                const { data: orderId, error } = await supabaseClient.rpc('fn_conterreno_operario_solicitar_materiales', {
+                    p_proyecto_id: state.currentProject,
+                    p_destino: dest,
+                    p_urgencia: urgency,
+                    p_items: state.cart.map(item => ({
+                        material_id: item.id,
+                        qty: item.qty
+                    }))
+                });
+                if (error) throw new Error(`No se pudo enviar el pedido: ${error.message}`);
+                if (!orderId) throw new Error('Supabase no confirmó la creación del pedido.');
+                order.id = orderId;
+            } catch (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+
+            state.materialOrders.unshift(order);
+            state.cart = [];
+            saveData();
+
+            document.getElementById('cart-destination').value = '';
+            renderCart();
+            renderMaterialOrders();
+            showToast('Pedido enviado exitosamente a la Bodega de Obra', 'success');
+        }
+
+        function renderMaterialOrders() {
+            const container = document.getElementById('material-orders-history');
+            container.innerHTML = '';
+
+            if (!state.materialOrders.length) {
+                container.innerHTML = '<p class="text-xs text-slate-500">Todavía no tienes pedidos de materiales en esta obra.</p>';
+                return;
+            }
+
+            state.materialOrders.forEach(ord => {
+                const statusClass = ord.status === 'Entregado' ? 'bg-emerald-100 text-emerald-800' :
+                    ord.status === 'Rechazado' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800';
+
+                const card = document.createElement('div');
+                card.className = 'p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between font-bold">
+                        <span class="text-slate-900">${escapeHtml(ord.id)}</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full ${statusClass}">${escapeHtml(ord.status)}</span>
+                    </div>
+                    <p class="text-slate-700 font-medium">${escapeHtml(ord.item)}</p>
+                    ${ord.reason ? `<p class="text-rose-800">Motivo: ${escapeHtml(ord.reason)}</p>` : ''}
+                    <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1">
+                        <span><i class="fa-solid fa-location-dot mr-1"></i> ${escapeHtml(ord.sector)}</span>
+                        <span>${escapeHtml(ord.date)}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function refreshMaterialOrders() {
+            if (!supabaseClient || !currentUser || state.isOffline) {
+                showToast('Inicia sesión para actualizar tus pedidos.', 'error');
+                return;
+            }
+            const { data, error } = await supabaseClient
+                .from('conterreno_pedidos_materiales')
+                .select('id,destino,urgencia,estado,items,creado_en,motivo_resolucion')
+                .eq('proyecto_id', state.currentProject)
+                .order('creado_en', { ascending: false });
+            if (error) {
+                showToast(`No se pudieron actualizar los pedidos: ${error.message}`, 'error');
+                return;
+            }
+            state.materialOrders = (data || []).map(row => ({
+                id: row.id,
+                item: (row.items || []).map(item => `${item.name || item.material_id || 'Material'} (${item.qty} ${item.unit || ''})`).join(', '),
+                sector: row.destino,
+                urgency: row.urgencia,
+                status: row.estado,
+                date: new Date(row.creado_en).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }),
+                reason: row.motivo_resolucion
+            }));
+            renderMaterialOrders();
+        }
+
+        function calculateImpact() {
+            const days = parseFloat(document.getElementById('calc-days').value) || 0;
+            const workers = parseFloat(document.getElementById('calc-workers').value) || 0;
+            const wage = parseFloat(document.getElementById('calc-wage').value) || 0;
+            const machinery = parseFloat(document.getElementById('calc-machinery').value) || 0;
+            const penalty = parseFloat(document.getElementById('calc-penalty').value) || 0;
+
+            const laborCost = days * workers * wage;
+            const machineryCost = days * machinery;
+            const penaltyCost = days * penalty;
+            const totalCost = laborCost + machineryCost + penaltyCost;
+
+            // Date math
+            const projDate = new Date();
+            projDate.setDate(projDate.getDate() + 45 + days);
+            const dateStr = projDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+
+            document.getElementById('res-labor-cost').innerText = '$ ' + laborCost.toLocaleString();
+            document.getElementById('res-machinery-cost').innerText = '$ ' + machineryCost.toLocaleString();
+            document.getElementById('res-penalty-cost').innerText = '$ ' + penaltyCost.toLocaleString();
+            document.getElementById('res-total-cost').innerText = '$ ' + totalCost.toLocaleString();
+            document.getElementById('res-new-date').innerText = dateStr;
+
+            const rec = document.getElementById('res-recommendation');
+            if (totalCost > 5000) {
+                rec.innerHTML = `<strong>ALERTA CRÍTICA DE IMPACTO:</strong> Un retraso de ${days} días genera un sobrecosto severo ($${totalCost.toLocaleString()} USD). Se sugiere convocar una reunión de Last Planner para renegociar entregas en bodega o redistribuir cuadrillas a sub-sectores liberados inmediatamente.`;
+            } else {
+                rec.innerHTML = `Para evitar este sobrecosto estimado de $${totalCost.toLocaleString()} USD, reasigne a la cuadrilla de ${workers} trabajadores a tareas sin restricciones en el Last Planner mientras se libera el cuello de botella.`;
+            }
+        }
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+    </script>
+    <script src="role-screens.js"></script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
+    <title>Acceso | BuildTech ConTerreno</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 py-10">
+        <header class="mb-8 text-center">
+            <div class="mx-auto mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500 text-2xl text-slate-950">
+                <i class="fa-solid fa-helmet-safety"></i>
+            </div>
+            <p class="text-xs font-bold uppercase tracking-[.25em] text-amber-400">BuildTech Field OS</p>
+            <h1 class="mt-2 text-3xl font-black tracking-tight">ConTerreno</h1>
+        </header>
+
+        <section class="rounded-3xl border border-slate-800 bg-white p-6 text-slate-900 shadow-2xl sm:p-8">
+            <div class="mb-6">
+                <h2 id="form-title" class="text-xl font-extrabold">Iniciar sesión</h2>
+            </div>
+
+            <form id="auth-form" class="space-y-4">
+                <div id="register-name-field" class="hidden">
+                    <label for="full-name" class="mb-1 block text-xs font-semibold">Nombre completo</label>
+                    <input id="full-name" type="text" autocomplete="name" minlength="2" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                </div>
+                <div>
+                    <label for="email" class="mb-1 block text-xs font-semibold">Correo electrónico</label>
+                    <input id="email" type="email" autocomplete="email" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                </div>
+                <div>
+                    <label for="password" class="mb-1 block text-xs font-semibold">Contraseña</label>
+                    <input id="password" type="password" autocomplete="current-password" minlength="8" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                </div>
+                <div id="confirm-password-field" class="hidden">
+                    <label for="confirm-password" class="mb-1 block text-xs font-semibold">Confirmar contraseña</label>
+                    <input id="confirm-password" type="password" autocomplete="new-password" minlength="8" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                </div>
+                <p id="access-message" role="status" aria-live="polite" class="hidden rounded-lg p-3 text-xs leading-5"></p>
+                <button id="submit-button" type="submit" class="w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">Iniciar sesión</button>
+            </form>
+            <p id="login-prompt" class="mt-5 text-center text-sm text-slate-600">
+                ¿No tienes una cuenta?
+                <button id="register-link" type="button" class="font-bold text-amber-700 hover:text-amber-900">Crear cuenta</button>
+            </p>
+            <p id="register-prompt" class="mt-5 hidden text-center text-sm text-slate-600">
+                ¿Ya tienes una cuenta?
+                <button id="login-link" type="button" class="font-bold text-amber-700 hover:text-amber-900">Iniciar sesión</button>
+            </p>
+        </section>
+    </main>
+
+    <script>
+        const rolePages = {
+            ADMIN_GENERAL: 'administrador.html',
+            JEFE_OBRA: 'jefe-obra.html',
+            BODEGUERO: 'bodeguero.html',
+            OPERARIO_MAESTRO: 'operario.html'
+        };
+        let authMode = 'login';
+        let supabaseClient;
+
+        const form = document.getElementById('auth-form');
+        const submitButton = document.getElementById('submit-button');
+        const accessMessage = document.getElementById('access-message');
+        const formTitle = document.getElementById('form-title');
+
+        function setMessage(message, type = 'error') {
+            accessMessage.textContent = message;
+            accessMessage.className = `rounded-lg p-3 text-xs leading-5 ${type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`;
+        }
+
+        function getRegistrationErrorMessage(error) {
+            const details = `${error?.message || ''} ${error?.code || ''}`.toLowerCase();
+            if (/rate.?limit|over_email_send_rate_limit/.test(details)) {
+                return 'Supabase alcanzó el límite de correos de confirmación. El SMTP de prueba no sirve para registrar decenas de personas: configura un SMTP propio en Authentication > SMTP Settings y ajusta Authentication > Rate Limits según la capacidad de tu proveedor. No reintentes muchas veces; revisa primero Authentication > Users. Este límite es de envío de correos, no del número de correos distintos.';
+            }
+            return `No se pudo crear la cuenta: ${error?.message || 'error desconocido.'}`;
+        }
+
+        function setMode(mode) {
+            authMode = mode;
+            const registering = mode === 'register';
+            document.getElementById('register-name-field').classList.toggle('hidden', !registering);
+            document.getElementById('confirm-password-field').classList.toggle('hidden', !registering);
+            document.getElementById('full-name').required = registering;
+            document.getElementById('confirm-password').required = registering;
+            document.getElementById('password').autocomplete = registering ? 'new-password' : 'current-password';
+            submitButton.textContent = registering ? 'Crear cuenta' : 'Iniciar sesión';
+            formTitle.textContent = registering ? 'Crear cuenta' : 'Iniciar sesión';
+            document.getElementById('login-prompt').classList.toggle('hidden', registering);
+            document.getElementById('register-prompt').classList.toggle('hidden', !registering);
+            accessMessage.classList.add('hidden');
+        }
+
+        async function getAssignedRole(userId) {
+            const { data, error } = await supabaseClient
+                .from('conterreno_usuarios_proyectos')
+                .select('proyecto_id, usuarios!inner(roles!inner(codigo_rol)), conterreno_proyectos!inner(id, activo)')
+                .eq('usuario_auth_id', userId)
+                .eq('activo', true);
+            if (error) throw new Error(`No se pudo consultar la asignación de la cuenta: ${error.message}`);
+
+            const membership = (data || []).find(row => row.conterreno_proyectos?.activo);
+            if (!membership) {
+                const { data: request, error: requestError } = await supabaseClient
+                    .from('conterreno_solicitudes_acceso')
+                    .select('estado')
+                    .eq('usuario_auth_id', userId)
+                    .maybeSingle();
+                if (requestError) throw new Error(`No se pudo consultar el estado de la cuenta: ${requestError.message}`);
+                if (request?.estado === 'PENDIENTE') {
+                    throw new Error('La cuenta está pendiente de aprobación. El administrador debe asignar tu rol y obra.');
+                }
+                if (request?.estado === 'RECHAZADA') {
+                    throw new Error('La solicitud de acceso no fue aprobada.');
+                }
+            }
+            const role = membership?.usuarios?.roles?.codigo_rol;
+            if (!rolePages[role]) {
+                throw new Error('La cuenta no tiene acceso a una obra activa.');
+            }
+            return role;
+        }
+
+        async function routeUser(user) {
+            const role = await getAssignedRole(user.id);
+            window.location.replace(rolePages[role]);
+        }
+
+        async function initializeAuth() {
+            const config = window.CONTERRENO_SUPABASE || {};
+            if (!config.url || !/^https:\/\/.+\.supabase\.co$/.test(config.url) ||
+                !config.anonKey || config.anonKey.startsWith('TU_') ||
+                !window.supabase?.createClient) {
+                submitButton.disabled = true;
+                setMessage('Configura Supabase en supabase-config.js para continuar.');
+                return;
+            }
+
+            supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+            const { data, error } = await supabaseClient.auth.getSession();
+            if (error) {
+                setMessage(`No se pudo comprobar la sesión: ${error.message}`);
+                return;
+            }
+            if (data.session) {
+                try {
+                    await routeUser(data.session.user);
+                } catch (routeError) {
+                    setMessage(routeError.message);
+                }
+            }
+        }
+
+        document.getElementById('register-link').addEventListener('click', () => setMode('register'));
+        document.getElementById('login-link').addEventListener('click', () => setMode('login'));
+
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            accessMessage.classList.add('hidden');
+            if (!supabaseClient) {
+                setMessage('Supabase no está configurado.');
+                return;
+            }
+
+            const email = document.getElementById('email').value.trim().toLowerCase();
+            const password = document.getElementById('password').value;
+            submitButton.disabled = true;
+            submitButton.textContent = authMode === 'register' ? 'Creando cuenta...' : 'Validando...';
+
+            try {
+                if (authMode === 'register') {
+                    if (password !== document.getElementById('confirm-password').value) {
+                        throw new Error('Las contraseñas no coinciden.');
+                    }
+                    const { data, error } = await supabaseClient.auth.signUp({
+                        email,
+                        password,
+                        options: { data: { full_name: document.getElementById('full-name').value.trim() } }
+                    });
+                    if (error) throw new Error(getRegistrationErrorMessage(error));
+                    if (data.session) {
+                        const { error: signOutError } = await supabaseClient.auth.signOut();
+                        if (signOutError) throw new Error(`Cuenta creada, pero no se pudo cerrar la sesión: ${signOutError.message}`);
+                    }
+                    const confirmationRequired = !data.session;
+                    const successMessage = confirmationRequired
+                        ? 'Cuenta creada. Confirma tu correo; luego el administrador asignará tu rol y obra.'
+                        : 'Cuenta creada. El administrador debe asignarte un rol y una obra antes de iniciar sesión.';
+                    form.reset();
+                    setMode('login');
+                    document.getElementById('email').value = email;
+                    setMessage(successMessage, 'success');
+                    return;
+                }
+
+                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+                if (error) throw new Error(`No se pudo iniciar sesión: ${error.message}`);
+                await routeUser(data.user);
+            } catch (error) {
+                setMessage(error.message || 'No se pudo completar la solicitud.');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = authMode === 'register' ? 'Crear cuenta' : 'Iniciar sesión';
+            }
+        });
+
+        initializeAuth().catch(error => {
+            setMessage(`No se pudo inicializar el acceso: ${error.message}`);
+        });
+    </script>
+</body>
+</html>
