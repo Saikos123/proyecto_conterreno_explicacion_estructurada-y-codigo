@@ -76,9 +76,20 @@ Para detener el servidor, vuelve a la terminal y presiona `Ctrl+C`.
 
    ```powershell
    supabase functions deploy admin-create-user
+   supabase functions deploy auth-lockout
    ```
 
-9. Configura Auth, confirmación de correo, SMTP y URLs permitidas en Supabase.
+   Define el secreto de la función `auth-lockout` con un valor aleatorio
+   criptográficamente seguro de al menos 32 caracteres:
+
+   ```powershell
+   supabase secrets set AUTH_LOCKOUT_HASH_SECRET=<valor-seguro>
+   ```
+
+9. Configura en Auth la inactividad máxima de 15 minutos, confirmación de
+   correo, SMTP y URLs permitidas en Supabase. `supabase/config.toml` incluye
+   este valor para el entorno local; revisa que también esté habilitado en el
+   proyecto remoto y que el plan contratado lo permita.
    Para pruebas locales usa las URL de desarrollo; para una publicación se
    requiere dominio HTTPS y sus redirect URLs correspondientes.
 
@@ -119,7 +130,13 @@ administrador.
 La aplicación busca la asignación guardada en Supabase para decidir el rol. Las
 páginas `administrador.html`, `jefe-obra.html`, `bodeguero.html` y `operario.html`
 son accesos directos al panel; no reemplazan el inicio de sesión ni conceden
-permisos por sí mismas.
+permisos por sí mismas. Tres fallos consecutivos desde la misma combinación de
+cuenta y origen activan un bloqueo temporal de 15 minutos en estos formularios.
+Si el control no está disponible, el formulario no continúa con el login.
+
+El panel principal cierra la sesión del navegador al acumular 15 minutos sin
+actividad. Este control de interfaz no sustituye la expiración y los límites
+del servidor Auth; configura también el timeout remoto y sus límites nativos.
 
 ## 6. Recorrido de cada rol
 
@@ -130,6 +147,11 @@ permisos por sí mismas.
 - En **Perfiles y asignaciones**, revisa los perfiles existentes y administra
   rol, obra o estado según corresponda.
 - En **Crear obra**, registra las obras que se usarán en las asignaciones.
+- Al crear una obra, puedes indicar fechas de vigencia y jornada (días y
+  horario); desde la lista puedes editar estos valores. Las fechas de tareas y
+  préstamos se validan respecto de la vigencia configurada. La jornada es
+  común a la obra y a las personas asignadas; si se necesitan turnos
+  individuales, habrá que agregar ese modelo antes de usarlo para nómina.
 - Consulta auditoría, alertas de stock y Kardex en modo lectura.
 - Al crear una cuenta desde el panel, guarda la contraseña inicial y entrégala
   por un canal privado. La aplicación la muestra una sola vez.
@@ -138,6 +160,8 @@ permisos por sí mismas.
 
 - Revisa las tarjetas de préstamos, reportes, herramientas, alertas y Kardex.
 - Usa **Plan semanal** para consultar y gestionar las tareas disponibles.
+- Al crear una tarea, registra opcionalmente inicio y fecha límite. El sistema
+  rechaza fechas inconsistentes o fuera de la vigencia de la obra.
 - Usa **Incidencias** para revisar y actualizar los reportes de terreno.
 - Este rol supervisa; no registra préstamos ni modifica herramientas o stock.
 
@@ -147,6 +171,8 @@ permisos por sí mismas.
   una herramienta.
 - Registra herramientas, préstamos y devoluciones desde las tarjetas
   correspondientes.
+- Cada préstamo requiere fecha prevista de devolución; el panel señala
+  vencimientos atrasados.
 - Si una devolución tiene daños, adjunta la evidencia solicitada.
 - En **Pedidos de materiales**, despacha el pedido completo si hay stock
   suficiente o lo rechaza indicando el motivo. El despacho parcial no forma
@@ -162,6 +188,32 @@ permisos por sí mismas.
 - Abre **Pedidos Bodega** para solicitar materiales y revisar sus pedidos.
 - Usa **Incidencias** para reportar un problema de terreno.
 - No puede gestionar solicitudes de otras personas ni modificar stock.
+
+### Porcentaje de asistencia
+
+- En **Asistencia mensual**, la persona ve su porcentaje en Bodega y Operario;
+  Jefatura consulta a las personas asignadas a su obra y Administración puede
+  consultar todas las obras o filtrar una.
+- El cálculo es: jornadas programadas transcurridas con entrada marcada
+  divididas por las jornadas programadas transcurridas del mes. Se cuenta el
+  día con entrada aunque todavía falte la salida; las salidas pendientes se
+  muestran aparte.
+- El día actual se incorpora cuando se marca entrada o al llegar la hora de
+  término configurada. Sin jornada de obra o sin jornadas programadas
+  transcurridas se indica **No calculable**, no 0%.
+- “Sin marcaje” no determina por sí solo una ausencia injustificada. El
+  porcentaje es informativo y no reemplaza la revisión laboral de la persona
+  responsable.
+
+### Historial para todos los roles
+
+- En **Historial de actividad**, filtra hasta 31 días y exporta los resultados
+  permitidos para tu rol a Excel (.xlsx) o mediante impresión/guardar como PDF.
+- Administración consulta globalmente; Jefatura ve la obra asignada; Bodega
+  ve movimientos de bodega; Trabajador ve su propia actividad.
+- Un día programado sin registro se muestra como **Sin marcaje** y no se
+  interpreta como ausencia injustificada. Para el día actual, solo aparece
+  después de terminar el horario programado.
 
 ## 7. Entender estados y errores
 

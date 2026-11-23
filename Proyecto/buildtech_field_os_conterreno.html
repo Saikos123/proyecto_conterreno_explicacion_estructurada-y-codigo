@@ -8,11 +8,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
+    <script src="auth-login.js"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
@@ -38,7 +38,9 @@
         }
     </script>
     <style>
-        .kanban-col { min-height: 480px; }
+        .kanban-board { min-width: 0; }
+        .kanban-col { min-height: 480px; max-height: 620px; }
+        .kanban-col > [id^="col-"] { max-height: 520px; }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -49,6 +51,28 @@
         .workspace-card[open] { box-shadow: 0 14px 32px -24px rgb(15 23 42 / 50%); }
         .workspace-card[open] > summary { background: #f8fafc; }
         .workspace-card[open] .workspace-card-chevron { transform: rotate(180deg); }
+        .role-workspace-masonry { column-count: 1; column-gap: 1.5rem; }
+        .role-workspace-masonry > .workspace-card {
+            display: inline-block;
+            width: 100%;
+            margin: 0 0 1.5rem;
+            break-inside: avoid;
+            vertical-align: top;
+        }
+        @media (min-width: 768px) {
+            .role-workspace-masonry--compact { column-count: 2; }
+        }
+        @media (min-width: 1280px) {
+            .role-workspace-masonry--admin { column-count: 2; }
+        }
+        .workspace-card input:not([type="checkbox"]), .workspace-card select {
+            min-width: 0;
+            max-width: 100%;
+        }
+        .workspace-card :focus-visible {
+            outline: 2px solid #d97706;
+            outline-offset: 2px;
+        }
         .role-hero-admin_general { background-image: linear-gradient(118deg, #0f172a 0%, #1e293b 58%, #0c1527 100%); }
         .role-hero-jefe_obra { background-image: linear-gradient(118deg, #172554 0%, #1e3a8a 58%, #0c244e 100%); }
         .role-hero-bodeguero { background-image: linear-gradient(118deg, #fcd34d 0%, #fbbf24 58%, #f59e0b 100%); }
@@ -63,6 +87,26 @@
             .role-hero-jefe_obra .role-hero-copy > div:first-child { max-width: 34rem; }
             .role-hero-operario_maestro .role-hero-layout { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
             .role-hero-operario_maestro .role-hero-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 767px) {
+            #view-kanban .kanban-board {
+                grid-auto-columns: min(86vw, 360px);
+                grid-auto-flow: column;
+                grid-template-columns: none !important;
+                overflow-x: auto;
+                overscroll-behavior-x: contain;
+                scroll-snap-type: x mandatory;
+                scrollbar-width: thin;
+            }
+            .kanban-col {
+                min-height: min(58vh, 390px);
+                max-height: 58vh;
+                scroll-snap-align: start;
+            }
+            .kanban-col > [id^="col-"] { max-height: none; }
+            #view-role-workspace .workspace-card button { min-height: 44px; }
+            #view-role-workspace .workspace-card input:not([type="checkbox"]),
+            #view-role-workspace .workspace-card select { min-height: 44px; }
         }
         #view-role-workspace[data-role="jefe_obra"] { --role-accent: #1d4ed8; }
         #view-role-workspace[data-role="bodeguero"] { --role-accent: #d97706; }
@@ -122,9 +166,6 @@
         <nav class="bg-slate-950 border-t border-slate-800/80 px-4 sm:px-6 lg:px-8">
             <div class="max-w-screen-2xl mx-auto flex min-w-0 flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div class="flex w-full min-w-0 gap-1 overflow-x-auto custom-scrollbar py-1.5" id="nav-tabs">
-                    <button onclick="switchTab('dashboard')" id="tab-dashboard" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all bg-amber-500 text-slate-950 shadow-sm">
-                        <i class="fa-solid fa-chart-line"></i> Dashboard
-                    </button>
                     <button onclick="switchTab('incidencias')" id="tab-incidencias" class="nav-btn shrink-0 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all text-slate-400 hover:text-white hover:bg-slate-800">
                         <i class="fa-solid fa-triangle-exclamation"></i> Bitácora Incidencias
                         <span id="badge-incidencias" class="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">3</span>
@@ -175,178 +216,41 @@
 
     <main class="flex-1 max-w-screen-2xl w-full mx-auto p-3 sm:p-5 lg:p-7 space-y-5">
 
-        <!-- ================= SECTION 1: DASHBOARD ================= -->
-        <section id="view-dashboard" class="hidden space-y-6">
-
-            <!-- Welcome & Quick Actions Bar -->
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div>
-                    <h1 class="text-xl font-bold text-slate-900 flex items-center gap-2">
-                        <span>Resumen Operativo de Obra</span>
-                        <span class="text-xs bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-md border border-amber-200" id="current-project-label">Edificio Altavista</span>
-                    </h1>
-                    <p class="text-xs text-slate-500 mt-1">Control de avance físico, cumplimiento semanal y trazabilidad en terreno.</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                    <button onclick="openModal('modal-incidencia')" class="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2">
-                        <i class="fa-solid fa-plus"></i> Reportar Hallazgo
-                    </button>
-                    <button onclick="switchTab('bodega')" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-md transition-all flex items-center gap-2">
-                        <i class="fa-solid fa-cart-plus"></i> Solicitar Insumo
-                    </button>
-                </div>
-            </div>
-
-            <!-- KPI Cards Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-                <!-- KPI 1 -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-2 h-full bg-emerald-500"></div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Avance Físico Global</p>
-                            <h3 class="text-2xl font-extrabold text-slate-900 mt-1" id="kpi-avance">68.4%</h3>
-                        </div>
-                        <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-                            <i class="fa-solid fa-chart-pie text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="mt-3 flex items-center gap-2 text-xs">
-                        <span class="text-emerald-600 font-bold flex items-center gap-0.5"><i class="fa-solid fa-arrow-up"></i> +2.1%</span>
-                        <span class="text-slate-400">vs semana anterior</span>
-                    </div>
-                </div>
-
-                <!-- KPI 2 -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-2 h-full bg-amber-500"></div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">PPC (Plan Cumplido)</p>
-                            <h3 class="text-2xl font-extrabold text-slate-900 mt-1" id="kpi-ppc">82%</h3>
-                        </div>
-                        <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
-                            <i class="fa-solid fa-list-check text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="mt-3 flex items-center gap-2 text-xs">
-                        <span class="text-amber-700 font-semibold">Meta Lean: &gt;85%</span>
-                        <span class="text-slate-400">| Last Planner</span>
-                    </div>
-                </div>
-
-                <!-- KPI 3 -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-2 h-full bg-rose-500"></div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Incidencias Críticas</p>
-                            <h3 class="text-2xl font-extrabold text-rose-600 mt-1" id="kpi-incidencias">3</h3>
-                        </div>
-                        <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
-                            <i class="fa-solid fa-triangle-exclamation text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                        <span class="text-rose-600 font-bold">2 Calidad</span> &bull; <span>1 Seguridad</span>
-                    </div>
-                </div>
-
-                <!-- KPI 4 -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Desvío Presupuestario</p>
-                            <h3 class="text-2xl font-extrabold text-emerald-600 mt-1" id="kpi-desvio">-2.4%</h3>
-                        </div>
-                        <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                            <i class="fa-solid fa-scale-balanced text-lg"></i>
-                        </div>
-                    </div>
-                    <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                        <span class="text-emerald-600 font-semibold">Bajo lo presupuestado</span>
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- Charts Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- S-Curve Chart -->
-                <div class="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h2 class="text-base font-bold text-slate-900">Curva S de Avance (Plan vs. Real)</h2>
-                            <p class="text-xs text-slate-500">Seguimiento semanal acumulado del proyecto</p>
-                        </div>
-                        <span class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-medium">Semanas 1 - 8</span>
-                    </div>
-                    <div class="h-64 sm:h-72">
-                        <canvas id="sCurveChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Incidencias Breakdown Chart -->
-                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-base font-bold text-slate-900">Hallazgos por Categoría</h2>
-                            <span class="text-xs text-slate-400">Terreno</span>
-                        </div>
-                        <div class="h-56 relative flex items-center justify-center">
-                            <canvas id="issuesChart"></canvas>
-                        </div>
-                    </div>
-                    <div class="mt-4 pt-3 border-t border-slate-100 flex justify-around text-center text-xs">
-                        <div>
-                            <span class="block font-bold text-amber-600">40%</span>
-                            <span class="text-slate-400">Calidad</span>
-                        </div>
-                        <div>
-                            <span class="block font-bold text-rose-600">30%</span>
-                            <span class="text-slate-400">Seguridad</span>
-                        </div>
-                        <div>
-                            <span class="block font-bold text-sky-600">20%</span>
-                            <span class="text-slate-400">Avance</span>
-                        </div>
-                        <div>
-                            <span class="block font-bold text-purple-600">10%</span>
-                            <span class="text-slate-400">Materiales</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Activity Timeline -->
-            <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 class="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-clock-rotate-left text-amber-500"></i> ÚLTIMOS REGISTROS EN TERRENO
-                </h3>
-                <div class="space-y-3" id="activity-feed">
-                    <!-- Dynamic Feed items populated via JS -->
-                </div>
-            </div>
-
-        </section>
-
-
         <!-- ================= SECTION 2: BITÁCORA DE INCIDENCIAS ================= -->
         <section id="view-incidencias" class="hidden space-y-6">
 
             <!-- Header bar with filter and create -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <div class="flex items-center gap-2 overflow-x-auto">
-                    <button onclick="filterIssues('ALL')" id="filter-issue-all" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white">Todas</button>
-                    <button onclick="filterIssues('Abierta')" id="filter-issue-open" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Abiertas</button>
-                    <button onclick="filterIssues('En Proceso')" id="filter-issue-progress" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">En Proceso</button>
-                    <button onclick="filterIssues('Cerrada')" id="filter-issue-closed" class="filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Cerradas</button>
+                <div class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="filterIssues('ALL')" id="filter-issue-all" class="filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-900 text-white">Todas</button>
+                    <button onclick="filterIssues('Abierta')" id="filter-issue-open" class="filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Abiertas</button>
+                    <button onclick="filterIssues('En Proceso')" id="filter-issue-progress" class="filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">En Proceso</button>
+                    <button onclick="filterIssues('Cerrada')" id="filter-issue-closed" class="filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">Cerradas</button>
                 </div>
-                <button onclick="openModal('modal-incidencia')" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 self-end sm:self-auto">
+                <div class="grid min-w-0 grid-cols-2 gap-2 sm:max-w-sm">
+                    <label class="min-w-0 text-xs font-semibold text-slate-700">Prioridad
+                        <select id="issue-priority-filter" onchange="filterIssuePriority(this.value)" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm">
+                            <option value="ALL">Todas</option>
+                            <option value="Alta">Alta / crítica</option>
+                            <option value="Media">Media</option>
+                            <option value="Baja">Baja</option>
+                        </select>
+                    </label>
+                    <label class="min-w-0 text-xs font-semibold text-slate-700">Sector
+                        <select id="issue-sector-filter" onchange="filterIssueSector(this.value)" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm">
+                            <option value="ALL">Todos</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="block min-w-0 flex-1 text-xs font-semibold text-slate-700 sm:max-w-sm">Buscar incidencia
+                    <input id="issue-search" type="search" oninput="filterIssueSearch(this.value)" placeholder="Título, sector o responsable"
+                        class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                </label>
+                <button onclick="openModal('modal-incidencia')" class="min-h-11 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 self-stretch sm:self-auto">
                     <i class="fa-solid fa-camera"></i> Nuevo Hallazgo
                 </button>
+                </div>
             </div>
 
             <!-- Issues Cards Grid -->
@@ -373,7 +277,8 @@
             </div>
 
             <!-- Kanban Board Columns -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <p class="text-xs text-slate-500 sm:hidden">Desliza horizontalmente para revisar los estados del plan semanal.</p>
+            <div class="kanban-board grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
                 <!-- Col 1: Por Empezar -->
                 <div class="bg-slate-200/60 p-3 rounded-2xl flex flex-col kanban-col border border-slate-300/60">
@@ -663,7 +568,9 @@
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-700 mb-1">Asignar a Responsable</label>
-                        <input type="text" id="issue-assignee" required placeholder="Ej: Capataz Encofrados" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        <select id="issue-assignee" required class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                            <option value="">Cargando responsables...</option>
+                        </select>
                     </div>
                 </div>
 
@@ -708,7 +615,20 @@
                     </div>
                     <div>
                         <label class="block font-semibold text-slate-700 mb-1">Responsable</label>
-                        <input type="text" id="task-assignee" required placeholder="Cuadrilla Fierreros" class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        <select id="task-assignee" required class="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white">
+                            <option value="">Cargando operarios...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Fecha de inicio</label>
+                        <input type="date" id="task-start-date" class="w-full rounded-xl border border-slate-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Fecha límite</label>
+                        <input type="date" id="task-deadline" class="w-full rounded-xl border border-slate-300 p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500">
                     </div>
                 </div>
 
@@ -751,6 +671,7 @@
             currentRole: null,
             issues: [],
             tasks: [],
+            projectPeople: [],
             cart: [],
             materialOrders: [],
             materialCatalog: []
@@ -767,7 +688,7 @@
             ADMIN_GENERAL: new Set(['incidencias', 'kanban', 'role-workspace']),
             JEFE_OBRA: new Set(['incidencias', 'kanban', 'role-workspace']),
             BODEGUERO: new Set(['role-workspace']),
-            OPERARIO_MAESTRO: new Set(['bodega', 'role-workspace'])
+            OPERARIO_MAESTRO: new Set(['bodega', 'incidencias', 'kanban', 'role-workspace'])
         };
         const ROLE_ENTRY_FILES = {
             ADMIN_GENERAL: 'administrador.html',
@@ -784,13 +705,18 @@
         }
 
         let state = createDefaultState();
-        let activeTab = 'dashboard';
+        let activeTab = 'role-workspace';
         let currentIssueFilter = 'ALL';
-        let sCurveChartInstance = null;
-        let issuesChartInstance = null;
+        let currentIssuePriorityFilter = 'ALL';
+        let currentIssueSectorFilter = 'ALL';
+        let currentIssueSearch = '';
         let supabaseClient = null;
         let currentUser = null;
         let projectMemberships = [];
+        let inactivityTimer = null;
+        let lastActivityAt = 0;
+        const inactivityStorageKey = 'conterreno_last_activity';
+        const inactivityLimitMs = 15 * 60 * 1000;
 
         const supabaseConfig = window.CONTERRENO_SUPABASE || {};
         const supabaseConfigured = Boolean(
@@ -802,8 +728,8 @@
 
         window.onload = async function() {
             renderAll();
-            initCharts();
             calculateImpact();
+            initInactivityMonitor();
             document.getElementById('auth-form').addEventListener('submit', signIn);
             showAuthOverlay();
 
@@ -847,8 +773,10 @@
             })[character]);
         }
 
-        function createLocalId() {
-            return window.crypto?.randomUUID ? window.crypto.randomUUID() : `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        function localDateString(date = new Date()) {
+            const localDate = new Date(date);
+            localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset());
+            return localDate.toISOString().slice(0, 10);
         }
 
         function updateConnectionStatus(connected) {
@@ -877,6 +805,40 @@
             errorElement.classList.remove('hidden');
         }
 
+        function initInactivityMonitor() {
+            const registerActivity = () => {
+                if (!currentUser) return;
+                const now = Date.now();
+                if (now - lastActivityAt < 1000) return;
+                lastActivityAt = now;
+                localStorage.setItem(inactivityStorageKey, String(now));
+                scheduleInactivityTimeout(now);
+            };
+            ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(eventName => {
+                window.addEventListener(eventName, registerActivity, { passive: true });
+            });
+            window.addEventListener('storage', event => {
+                if (event.key !== inactivityStorageKey || !currentUser || !event.newValue) return;
+                const timestamp = Number(event.newValue);
+                if (Number.isFinite(timestamp)) {
+                    lastActivityAt = Math.max(lastActivityAt, timestamp);
+                    scheduleInactivityTimeout(lastActivityAt);
+                }
+            });
+        }
+
+        function scheduleInactivityTimeout(lastActivity) {
+            clearTimeout(inactivityTimer);
+            const remaining = inactivityLimitMs - (Date.now() - lastActivity);
+            if (remaining <= 0) {
+                signOut({ reason: 'Tu sesión se cerró por 15 minutos de inactividad.' });
+                return;
+            }
+            inactivityTimer = setTimeout(() => {
+                signOut({ reason: 'Tu sesión se cerró por 15 minutos de inactividad.' });
+            }, remaining);
+        }
+
         async function signIn(event) {
             event.preventDefault();
             if (!supabaseClient) {
@@ -891,12 +853,12 @@
             document.getElementById('auth-error').classList.add('hidden');
 
             try {
-                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-                if (error) {
-                    showAuthError(`No se pudo iniciar sesión: ${error.message}`);
-                    return;
-                }
-                await connectAuthenticatedUser(data.user);
+                const { user } = await window.ConTerrenoAuth.signIn(
+                    supabaseClient,
+                    email,
+                    password
+                );
+                await connectAuthenticatedUser(user);
             } catch (error) {
                 showAuthError(`No se pudo completar el inicio de sesión: ${error.message}`);
             } finally {
@@ -905,14 +867,19 @@
             }
         }
 
-        async function signOut() {
+        async function signOut(options = {}) {
+            clearTimeout(inactivityTimer);
             const { error } = await supabaseClient.auth.signOut();
             if (error) {
                 showToast(`No se pudo cerrar la sesión: ${error.message}`, 'error');
+                if (options.reason) {
+                    inactivityTimer = setTimeout(() => signOut(options), 30000);
+                }
                 return;
             }
             currentUser = null;
             projectMemberships = [];
+            localStorage.removeItem(inactivityStorageKey);
             document.getElementById('auth-controls').classList.add('hidden');
             document.getElementById('auth-controls').classList.remove('flex');
             localStorage.removeItem('conterreno_data');
@@ -925,6 +892,7 @@
                 return;
             }
             showAuthOverlay();
+            if (options.reason) showAuthError(options.reason);
         }
 
         async function connectAuthenticatedUser(user) {
@@ -1007,15 +975,50 @@
             applyProjectRole(selectedProject.role);
             applyRolePermissions();
             await loadProjectData(selectedProject.id);
+            lastActivityAt = Date.now();
+            localStorage.setItem(inactivityStorageKey, String(lastActivityAt));
+            scheduleInactivityTimeout(lastActivityAt);
+        }
+
+        async function loadProjectPeople() {
+            if (!currentUser || state.isOffline) return;
+            if (!['JEFE_OBRA', 'ADMIN_GENERAL', 'OPERARIO_MAESTRO'].includes(state.currentRole)) return;
+            const { data, error } = await supabaseClient.rpc(
+                'fn_conterreno_listar_responsables',
+                {
+                    p_proyecto_id: state.currentProject,
+                    p_solo_operarios: false
+                }
+            );
+            if (error) {
+                showToast(`No se pudieron cargar los responsables: ${error.message}`, 'error');
+                return;
+            }
+            state.projectPeople = data || [];
+
+            const taskOptions = '<option value="">Selecciona un operario</option>' +
+                state.projectPeople
+                    .filter(person => person.codigo_rol === 'OPERARIO_MAESTRO')
+                    .map(person =>
+                        `<option value="${escapeHtml(person.id_usuario)}">${escapeHtml(person.nombre_completo)} · ${escapeHtml(person.rut)}</option>`
+                    ).join('');
+            const issueOptions = '<option value="">Selecciona una persona</option>' +
+                state.projectPeople.map(person =>
+                    `<option value="${escapeHtml(person.id_usuario)}">${escapeHtml(person.nombre_completo)} · ${escapeHtml(person.rut)}</option>`
+                ).join('');
+            const taskSelect = document.getElementById('task-assignee');
+            const issueSelect = document.getElementById('issue-assignee');
+            if (taskSelect) taskSelect.innerHTML = taskOptions;
+            if (issueSelect) issueSelect.innerHTML = issueOptions;
         }
 
         async function loadProjectData(projectId) {
             const [issuesResult, tasksResult, ordersResult, stockResult] = await Promise.all([
-                supabaseClient.from('conterreno_incidencias').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
-                supabaseClient.from('conterreno_tareas').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
+                supabaseClient.from('conterreno_incidencias').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }).limit(200),
+                supabaseClient.from('conterreno_tareas').select('*').eq('proyecto_id', projectId).order('creado_en', { ascending: false }).limit(300),
                 supabaseClient.from('conterreno_pedidos_materiales')
                     .select('id,destino,urgencia,estado,items,creado_en,motivo_resolucion')
-                    .eq('proyecto_id', projectId).order('creado_en', { ascending: false }),
+                    .eq('proyecto_id', projectId).order('creado_en', { ascending: false }).limit(200),
                 supabaseClient.from('conterreno_stock_materiales')
                     .select('material_id,cantidad,conterreno_catalogo_materiales!inner(id,codigo,nombre,unidad,activo)')
                     .eq('proyecto_id', projectId)
@@ -1033,6 +1036,8 @@
                 priority: row.prioridad,
                 status: row.estado,
                 assignee: row.responsable,
+                assigneeId: row.responsable_id,
+                createdBy: row.creado_por,
                 desc: row.descripcion,
                 date: row.fecha_reporte,
                 photo: row.foto_url || ''
@@ -1042,8 +1047,11 @@
                 title: row.titulo,
                 sector: row.sector,
                 assignee: row.responsable,
+                assigneeId: row.responsable_id,
                 status: row.estado,
-                restriction: row.restriccion
+                restriction: row.restriccion,
+                startDate: row.fecha_inicio,
+                deadline: row.fecha_limite
             }));
             state.materialOrders = (ordersResult.data || []).map(row => ({
                 id: row.id,
@@ -1063,11 +1071,9 @@
             }));
             state.cart = [];
             saveData();
-            document.getElementById('current-project-label').innerText =
-                projectMemberships.find(project => project.id === projectId)?.name || projectId;
+            await loadProjectPeople();
             renderAll();
             applyRolePermissions();
-            initCharts();
         }
 
         function applyProjectRole(role) {
@@ -1085,7 +1091,7 @@
         function applyRolePermissions() {
             if (!currentUser) return;
             const permissions = ROLE_UI_PERMISSIONS[state.currentRole] || new Set();
-            ['dashboard', 'incidencias', 'kanban', 'bodega', 'calculadora', 'role-workspace'].forEach(tab => {
+            ['incidencias', 'kanban', 'bodega', 'calculadora', 'role-workspace'].forEach(tab => {
                 const button = document.getElementById(`tab-${tab}`);
                 if (button) button.classList.toggle('hidden', !permissions.has(tab));
             });
@@ -1093,7 +1099,7 @@
                 ADMIN_GENERAL: ['role-workspace', 'incidencias', 'kanban'],
                 JEFE_OBRA: ['role-workspace', 'incidencias', 'kanban'],
                 BODEGUERO: ['role-workspace'],
-                OPERARIO_MAESTRO: ['role-workspace', 'bodega']
+                OPERARIO_MAESTRO: ['role-workspace', 'bodega', 'incidencias', 'kanban']
             }[state.currentRole] || ['role-workspace'];
             const navTabs = document.getElementById('nav-tabs');
             navOrder.forEach(tab => {
@@ -1112,20 +1118,21 @@
             if (planTab) planTab.innerHTML = '<i class="fa-solid fa-list-check"></i> Plan semanal';
             if (orderTab) orderTab.innerHTML = '<i class="fa-solid fa-boxes-packing"></i> Solicitar materiales';
             const isAdmin = state.currentRole === 'ADMIN_GENERAL';
-            const canCreateIssue = state.currentRole === 'OPERARIO_MAESTRO' || isAdmin;
+            const canCreateIssue =
+                state.currentRole === 'OPERARIO_MAESTRO' ||
+                state.currentRole === 'JEFE_OBRA' ||
+                isAdmin;
             const canManageIssues = state.currentRole === 'JEFE_OBRA' || isAdmin;
             const canPlanTasks = state.currentRole === 'JEFE_OBRA' || isAdmin;
             const canRequestMaterials = state.currentRole === 'OPERARIO_MAESTRO' || isAdmin;
 
             document.querySelectorAll("button[onclick=\"openModal('modal-incidencia')\"]")
                 .forEach(button => button.classList.toggle('hidden', !canCreateIssue));
-            document.querySelectorAll("#view-dashboard button[onclick=\"switchTab('bodega')\"]")
-                .forEach(button => button.classList.toggle('hidden', !canRequestMaterials));
             document.querySelectorAll("button[onclick=\"openModal('modal-kanban')\"]")
                 .forEach(button => button.classList.toggle('hidden', !canPlanTasks));
             document.querySelectorAll("#issues-list-container button[onclick^=\"updateIssueStatus(\"]")
                 .forEach(button => button.classList.toggle('hidden', !canManageIssues));
-            document.querySelectorAll("#view-kanban select, #view-kanban button[onclick^=\"deleteTask(\"]")
+            document.querySelectorAll("#view-kanban button[onclick^=\"deleteTask(\"]")
                 .forEach(control => control.classList.toggle('hidden', !canPlanTasks));
             document.getElementById('btn-submit-order').classList.toggle('hidden', !canRequestMaterials);
             document.querySelectorAll("#material-catalog button").forEach(button =>
@@ -1133,31 +1140,44 @@
             );
         }
 
+        function requireSupabaseWrite() {
+            if (!supabaseClient || !currentUser || state.isOffline) {
+                throw new Error('No hay una sesión conectada a Supabase; no se guardaron los cambios.');
+            }
+        }
+
         async function persistInsert(table, row) {
-            if (!supabaseClient || !currentUser || state.isOffline) return null;
+            requireSupabaseWrite();
             const { data, error } = await supabaseClient.from(table).insert(row).select().single();
             if (error) throw new Error(`No se pudo guardar en Supabase: ${error.message}`);
+            if (!data) throw new Error('Supabase no confirmó el registro; no se guardaron los cambios.');
             return data;
         }
 
         async function persistUpdate(table, id, changes) {
-            if (!supabaseClient || !currentUser || state.isOffline) return;
-            const { error } = await supabaseClient
+            requireSupabaseWrite();
+            const { data, error } = await supabaseClient
                 .from(table)
                 .update(changes)
                 .eq('id', id)
-                .eq('proyecto_id', state.currentProject);
+                .eq('proyecto_id', state.currentProject)
+                .select('id')
+                .maybeSingle();
             if (error) throw new Error(`No se pudo actualizar en Supabase: ${error.message}`);
+            if (!data) throw new Error('Supabase no actualizó ningún registro; verifica que exista y que tengas permiso en la obra.');
         }
 
         async function persistDelete(table, id) {
-            if (!supabaseClient || !currentUser || state.isOffline) return;
-            const { error } = await supabaseClient
+            requireSupabaseWrite();
+            const { data, error } = await supabaseClient
                 .from(table)
                 .delete()
                 .eq('id', id)
-                .eq('proyecto_id', state.currentProject);
+                .eq('proyecto_id', state.currentProject)
+                .select('id')
+                .maybeSingle();
             if (error) throw new Error(`No se pudo eliminar en Supabase: ${error.message}`);
+            if (!data) throw new Error('Supabase no eliminó ningún registro; verifica que exista y que tengas permiso en la obra.');
         }
 
         function showToast(message, type = 'success') {
@@ -1207,9 +1227,6 @@
                 activeBtn.className = 'nav-btn px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all bg-amber-500 text-slate-950 shadow-sm';
             }
 
-            if(tabId === 'dashboard') {
-                setTimeout(initCharts, 50);
-            }
         }
 
         async function switchProject(val) {
@@ -1244,13 +1261,11 @@
                 p2: "Residencial Los Olivos - Etapa 2",
                 p3: "Centro Logístico Norte - Bodegas"
             };
-            document.getElementById('current-project-label').innerText = projectNames[val];
-            showToast(`Proyecto activo cambiado a: ${projectNames[val]}`, 'info');
+            showToast(`Proyecto activo cambiado a: ${projectNames[val] || val}`, 'info');
             renderAll();
         }
 
         function renderAll() {
-            renderDashboardActivity();
             renderIssues();
             renderKanban();
             renderMaterialCatalog();
@@ -1261,98 +1276,36 @@
         }
 
         function updateBadges() {
-            const openIssuesCount = state.issues.filter(i => i.status !== 'Cerrada').length;
+            const visibleIssues = state.currentRole === 'OPERARIO_MAESTRO'
+                ? state.issues.filter(issue =>
+                    issue.createdBy === currentUser?.id ||
+                    issue.assigneeId === currentUser?.id
+                )
+                : state.issues;
+            const openIssuesCount = visibleIssues.filter(i => i.status !== 'Cerrada').length;
             document.getElementById('badge-incidencias').innerText = openIssuesCount;
-            document.getElementById('kpi-incidencias').innerText = openIssuesCount;
-        }
-
-        function renderDashboardActivity() {
-            const feed = document.getElementById('activity-feed');
-            feed.innerHTML = `
-                <div class="flex items-start gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                    <span class="p-2 bg-amber-100 text-amber-800 rounded-lg"><i class="fa-solid fa-triangle-exclamation"></i></span>
-                    <div class="flex-1">
-                        <p class="font-bold text-slate-800">Nuevo hallazgo reportado por Inspector ITO</p>
-                        <p class="text-slate-500 text-[11px]">Piso 4 - Interferencia sanitaria detectada hace 15 mins</p>
-                    </div>
-                </div>
-                <div class="flex items-start gap-3 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-                    <span class="p-2 bg-emerald-100 text-emerald-800 rounded-lg"><i class="fa-solid fa-check"></i></span>
-                    <div class="flex-1">
-                        <p class="font-bold text-slate-800">Tarea completada en Last Planner</p>
-                        <p class="text-slate-500 text-[11px]">Hormigonado de Columnas Eje C1-C4 marcado como 100%</p>
-                    </div>
-                </div>
-            `;
-        }
-
-        function initCharts() {
-            // S-Curve Chart
-            const ctx1 = document.getElementById('sCurveChart')?.getContext('2d');
-            if (ctx1) {
-                if (sCurveChartInstance) sCurveChartInstance.destroy();
-                sCurveChartInstance = new Chart(ctx1, {
-                    type: 'line',
-                    data: {
-                        labels: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5', 'Sem 6', 'Sem 7', 'Sem 8'],
-                        datasets: [
-                            {
-                                label: 'Avance Planificado (%)',
-                                data: [10, 22, 38, 52, 68, 80, 92, 100],
-                                borderColor: '#94a3b8',
-                                borderDash: [5, 5],
-                                backgroundColor: 'transparent',
-                                tension: 0.3
-                            },
-                            {
-                                label: 'Avance Real Terreno (%)',
-                                data: [8, 20, 39, 50, 68.4, null, null, null],
-                                borderColor: '#d97706',
-                                backgroundColor: 'rgba(217, 119, 6, 0.1)',
-                                fill: true,
-                                tension: 0.3,
-                                borderWidth: 3
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { position: 'top' } },
-                        scales: { y: { min: 0, max: 100 } }
-                    }
-                });
-            }
-
-            // Doughnut Chart
-            const ctx2 = document.getElementById('issuesChart')?.getContext('2d');
-            if (ctx2) {
-                if (issuesChartInstance) issuesChartInstance.destroy();
-                issuesChartInstance = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Calidad', 'Seguridad', 'Avance', 'Materiales'],
-                        datasets: [{
-                            data: [40, 30, 20, 10],
-                            backgroundColor: ['#d97706', '#e11d48', '#0284c7', '#9333ea']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } }
-                    }
-                });
-            }
         }
 
         function renderIssues() {
             const container = document.getElementById('issues-list-container');
             container.innerHTML = '';
+            renderIssueFilterOptions();
 
-            const filtered = state.issues.filter(issue => {
-                if (currentIssueFilter === 'ALL') return true;
-                return issue.status === currentIssueFilter;
+            const visibleIssues = state.currentRole === 'OPERARIO_MAESTRO'
+                ? state.issues.filter(issue =>
+                    issue.createdBy === currentUser?.id ||
+                    issue.assigneeId === currentUser?.id
+                )
+                : state.issues;
+
+            const filtered = visibleIssues.filter(issue => {
+                const matchesStatus = currentIssueFilter === 'ALL' || issue.status === currentIssueFilter;
+                const matchesPriority = currentIssuePriorityFilter === 'ALL' || issue.priority === currentIssuePriorityFilter;
+                const matchesSector = currentIssueSectorFilter === 'ALL' || issue.sector === currentIssueSectorFilter;
+                const matchesSearch = `${issue.title} ${issue.desc} ${issue.sector} ${issue.assignee}`
+                    .toLowerCase()
+                    .includes(currentIssueSearch.trim().toLowerCase());
+                return matchesStatus && matchesPriority && matchesSector && matchesSearch;
             });
 
             if (filtered.length === 0) {
@@ -1386,16 +1339,16 @@
                             <p class="text-xs text-slate-600 line-clamp-2">${escapeHtml(issue.desc)}</p>
                         </div>
                     </div>
-                    <div class="p-4 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between text-xs">
+                    <div class="p-4 pt-0 border-t border-slate-100 mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span class="text-slate-500 font-medium"><i class="fa-solid fa-user-gear mr-1"></i> ${escapeHtml(issue.assignee)}</span>
-                        <div class="flex items-center gap-1">
+                        <div class="flex flex-wrap items-center gap-1">
                             ${issue.status !== 'Cerrada' ?
-                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'Cerrada')" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-bold text-[11px]">
+                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'Cerrada')" class="min-h-11 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-bold text-[11px]">
                                     <i class="fa-solid fa-check"></i> Cerrar
                                         </button>` : ''}` : ''
                             }
                             ${issue.status === 'Abierta' ?
-                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'En Proceso')" class="px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg font-bold text-[11px]">
+                                        `${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<button onclick="updateIssueStatus('${escapeHtml(issue.id)}', 'En Proceso')" class="min-h-11 px-3 py-2 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg font-bold text-[11px]">
                                     Atender
                                         </button>` : ''}` : ''
                             }
@@ -1406,11 +1359,54 @@
             });
         }
 
+        function renderIssueFilterOptions() {
+            const sectorSelect = document.getElementById('issue-sector-filter');
+            if (!sectorSelect) return;
+            const visibleIssues = state.currentRole === 'OPERARIO_MAESTRO'
+                ? state.issues.filter(issue =>
+                    issue.createdBy === currentUser?.id ||
+                    issue.assigneeId === currentUser?.id
+                )
+                : state.issues;
+            const sectors = [...new Set(visibleIssues.map(issue => String(issue.sector || '').trim()).filter(Boolean))]
+                .sort((left, right) => left.localeCompare(right, 'es'));
+            if (!sectors.includes(currentIssueSectorFilter)) currentIssueSectorFilter = 'ALL';
+            sectorSelect.innerHTML = `<option value="ALL">Todos</option>${sectors.map(sector =>
+                `<option value="${escapeHtml(sector)}">${escapeHtml(sector)}</option>`
+            ).join('')}`;
+            sectorSelect.value = currentIssueSectorFilter;
+            const prioritySelect = document.getElementById('issue-priority-filter');
+            if (prioritySelect) prioritySelect.value = currentIssuePriorityFilter;
+        }
+
         function filterIssues(status) {
             currentIssueFilter = status;
             document.querySelectorAll('.filter-issue-btn').forEach(btn => {
-                btn.className = "filter-issue-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200";
+                btn.className = "filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200";
             });
+            const activeButtonId = {
+                ALL: 'filter-issue-all',
+                Abierta: 'filter-issue-open',
+                'En Proceso': 'filter-issue-progress',
+                Cerrada: 'filter-issue-closed'
+            }[status];
+            const activeButton = document.getElementById(activeButtonId);
+            if (activeButton) activeButton.className = "filter-issue-btn min-h-11 px-3 py-2 rounded-lg text-xs font-bold bg-slate-900 text-white";
+            renderIssues();
+        }
+
+        function filterIssueSearch(query) {
+            currentIssueSearch = query || '';
+            renderIssues();
+        }
+
+        function filterIssuePriority(priority) {
+            currentIssuePriorityFilter = priority || 'ALL';
+            renderIssues();
+        }
+
+        function filterIssueSector(sector) {
+            currentIssueSectorFilter = sector || 'ALL';
             renderIssues();
         }
 
@@ -1433,13 +1429,22 @@
 
         async function handleCreateIssue(e) {
             e.preventDefault();
+            const assigneeSelect = document.getElementById('issue-assignee');
+            const assigneeId = assigneeSelect.value;
+            const assigneeName = assigneeSelect.selectedOptions[0]?.textContent.split(' · ')[0] || '';
+            if (!assigneeId) {
+                showToast('Selecciona una persona responsable.', 'error');
+                return;
+            }
             const issue = {
                 title: document.getElementById('issue-title').value,
                 sector: document.getElementById('issue-sector').value,
                 category: document.getElementById('issue-category').value,
                 priority: document.getElementById('issue-priority').value,
                 status: 'Abierta',
-                assignee: document.getElementById('issue-assignee').value,
+                assignee: assigneeName,
+                assigneeId,
+                createdBy: currentUser?.id || null,
                 desc: document.getElementById('issue-desc').value,
                 date: new Date().toISOString().split('T')[0],
                 photo: document.getElementById('issue-photo').value.trim()
@@ -1454,11 +1459,13 @@
                     prioridad: issue.priority,
                     estado: issue.status,
                     responsable: issue.assignee,
+                    responsable_id: issue.assigneeId,
                     descripcion: issue.desc,
                     foto_url: issue.photo || null,
                     fecha_reporte: issue.date
                 });
-                issue.id = savedIssue?.id || createLocalId();
+                if (!savedIssue?.id) throw new Error('Supabase no confirmó el nuevo hallazgo.');
+                issue.id = savedIssue.id;
             } catch (error) {
                 showToast(error.message, 'error');
                 return;
@@ -1485,7 +1492,11 @@
 
             const counts = { todo: 0, progress: 0, blocked: 0, done: 0 };
 
-            state.tasks.forEach(task => {
+            const visibleTasks = state.currentRole === 'OPERARIO_MAESTRO'
+                ? state.tasks.filter(task => task.assigneeId === currentUser?.id)
+                : state.tasks;
+
+            visibleTasks.forEach(task => {
                 counts[task.status]++;
                 const card = document.createElement('div');
                 card.className = 'bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm space-y-2 hover:shadow transition-shadow';
@@ -1495,19 +1506,24 @@
                         <span><i class="fa-solid fa-user text-amber-500 mr-1"></i> ${escapeHtml(task.assignee)}</span>
                     </div>
                     <h4 class="font-bold text-xs text-slate-900 leading-snug">${escapeHtml(task.title)}</h4>
+                    ${task.startDate || task.deadline ? `<p class="text-[10px] ${task.deadline && task.deadline < localDateString() && task.status !== 'done' ? 'font-bold text-rose-700' : 'text-slate-500'}">
+                        ${task.startDate ? `Inicio: ${escapeHtml(task.startDate)}` : ''}
+                        ${task.startDate && task.deadline ? ' · ' : ''}
+                        ${task.deadline ? `Límite: ${escapeHtml(task.deadline)}` : ''}
+                    </p>` : ''}
                     ${task.restriction ? `
                         <div class="bg-rose-50 border border-rose-200 p-1.5 rounded-lg text-[10px] text-rose-800 font-medium flex items-center gap-1">
                             <i class="fa-solid fa-ban text-rose-600"></i> ${escapeHtml(task.restriction)}
                         </div>
                     ` : ''}
                     <div class="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
-                        ${!currentUser || state.currentRole === 'JEFE_OBRA' ? `<select onchange="moveTask('${escapeHtml(task.id)}', this.value)" class="text-[10px] bg-slate-50 border border-slate-200 rounded p-1 font-semibold text-slate-700 focus:outline-none">
+                        ${!currentUser || state.currentRole === 'JEFE_OBRA' || state.currentRole === 'ADMIN_GENERAL' || task.assigneeId === currentUser?.id ? `<select onchange="moveTask('${escapeHtml(task.id)}', this.value)" class="text-[10px] bg-slate-50 border border-slate-200 rounded p-1 font-semibold text-slate-700 focus:outline-none">
                             <option value="todo" ${task.status === 'todo' ? 'selected' : ''}>Por Empezar</option>
                             <option value="progress" ${task.status === 'progress' ? 'selected' : ''}>En Ejecución</option>
                             <option value="blocked" ${task.status === 'blocked' ? 'selected' : ''}>Restringida</option>
                             <option value="done" ${task.status === 'done' ? 'selected' : ''}>Completada</option>
                         </select>
-                        <button onclick="deleteTask('${escapeHtml(task.id)}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash"></i></button>` : ''}
+                        ${state.currentRole === 'JEFE_OBRA' || state.currentRole === 'ADMIN_GENERAL' ? `<button onclick="deleteTask('${escapeHtml(task.id)}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash"></i></button>` : ''}` : ''}
                     </div>
                 `;
                 cols[task.status].appendChild(card);
@@ -1518,10 +1534,6 @@
             document.getElementById('count-blocked').innerText = counts.blocked;
             document.getElementById('count-done').innerText = counts.done;
 
-            // Recalculate PPC
-            const total = state.tasks.length;
-            const ppc = total > 0 ? Math.round((counts.done / total) * 100) : 0;
-            document.getElementById('kpi-ppc').innerText = ppc + '%';
         }
 
         async function moveTask(taskId, newStatus) {
@@ -1568,13 +1580,27 @@
         async function handleCreateTask(e) {
             e.preventDefault();
             const status = document.getElementById('task-status').value;
+            const assigneeSelect = document.getElementById('task-assignee');
+            const assigneeId = assigneeSelect.value;
+            const assigneeName = assigneeSelect.selectedOptions[0]?.textContent.split(' · ')[0] || '';
+            if (!assigneeId) {
+                showToast('Selecciona un operario responsable.', 'error');
+                return;
+            }
             const task = {
                 title: document.getElementById('task-title').value,
                 sector: document.getElementById('task-sector').value,
-                assignee: document.getElementById('task-assignee').value,
+                assignee: assigneeName,
+                assigneeId,
                 status: status,
-                restriction: status === 'blocked' ? document.getElementById('task-restriction').value : null
+                restriction: status === 'blocked' ? document.getElementById('task-restriction').value : null,
+                startDate: document.getElementById('task-start-date').value || null,
+                deadline: document.getElementById('task-deadline').value || null
             };
+            if (task.startDate && task.deadline && task.deadline < task.startDate) {
+                showToast('La fecha límite no puede ser anterior a la fecha de inicio.', 'error');
+                return;
+            }
 
             try {
                 const savedTask = await persistInsert('conterreno_tareas', {
@@ -1582,10 +1608,14 @@
                     titulo: task.title,
                     sector: task.sector,
                     responsable: task.assignee,
+                    responsable_id: task.assigneeId,
                     estado: task.status,
-                    restriccion: task.restriction
+                    restriccion: task.restriction,
+                    fecha_inicio: task.startDate,
+                    fecha_limite: task.deadline
                 });
-                task.id = savedTask?.id || createLocalId();
+                if (!savedTask?.id) throw new Error('Supabase no confirmó la nueva tarea.');
+                task.id = savedTask.id;
             } catch (error) {
                 showToast(error.message, 'error');
                 return;
@@ -1740,6 +1770,7 @@
             document.getElementById('cart-destination').value = '';
             renderCart();
             renderMaterialOrders();
+            if (typeof renderWorkerRequests === 'function') renderWorkerRequests();
             showToast('Pedido enviado exitosamente a la Bodega de Obra', 'success');
         }
 
@@ -1798,6 +1829,7 @@
                 reason: row.motivo_resolucion
             }));
             renderMaterialOrders();
+            if (typeof renderWorkerRequests === 'function') renderWorkerRequests();
         }
 
         function calculateImpact() {

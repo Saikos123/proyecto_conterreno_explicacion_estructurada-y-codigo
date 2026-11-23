@@ -8,6 +8,9 @@ project_id = "Proyecto_para_Construccion"
 [functions.admin-create-user]
 verify_jwt = true
 
+[functions.auth-lockout]
+verify_jwt = false
+
 [api]
 enabled = true
 # Port to use for the API URL.
@@ -280,11 +283,11 @@ max_frequency = "5s"
 # 14152127777 = "123456"
 
 # Configure logged in session timeouts.
-# [auth.sessions]
+[auth.sessions]
 # Force log out after the specified duration.
 # timebox = "24h"
 # Force log out if the user has been inactive longer than the specified duration.
-# inactivity_timeout = "8h"
+inactivity_timeout = "15m"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
 # [auth.hook.before_user_created]

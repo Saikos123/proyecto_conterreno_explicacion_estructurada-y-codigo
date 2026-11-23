@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
+    <script src="auth-login.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body class="min-h-screen bg-slate-950 text-slate-100">
@@ -82,6 +83,18 @@
                 return 'Supabase alcanzó el límite de correos de confirmación. El SMTP de prueba no sirve para registrar decenas de personas: configura un SMTP propio en Authentication > SMTP Settings y ajusta Authentication > Rate Limits según la capacidad de tu proveedor. No reintentes muchas veces; revisa primero Authentication > Users. Este límite es de envío de correos, no del número de correos distintos.';
             }
             return `No se pudo crear la cuenta: ${error?.message || 'error desconocido.'}`;
+        }
+
+        function validateRegistrationPassword(password) {
+            const requirements = [
+                password.length >= 8,
+                /[A-Z]/.test(password),
+                /[a-z]/.test(password),
+                /[0-9]/.test(password),
+                /[^A-Za-z0-9]/.test(password)
+            ];
+            if (requirements.every(Boolean)) return '';
+            return 'La contraseña debe tener mínimo 8 caracteres e incluir mayúscula, minúscula, número y símbolo.';
         }
 
         function setMode(mode) {
@@ -180,6 +193,10 @@
                     if (password !== document.getElementById('confirm-password').value) {
                         throw new Error('Las contraseñas no coinciden.');
                     }
+                    const passwordValidationError = validateRegistrationPassword(password);
+                    if (passwordValidationError) {
+                        throw new Error(passwordValidationError);
+                    }
                     const { data, error } = await supabaseClient.auth.signUp({
                         email,
                         password,
@@ -201,9 +218,12 @@
                     return;
                 }
 
-                const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-                if (error) throw new Error(`No se pudo iniciar sesión: ${error.message}`);
-                await routeUser(data.user);
+                const { user } = await window.ConTerrenoAuth.signIn(
+                    supabaseClient,
+                    email,
+                    password
+                );
+                await routeUser(user);
             } catch (error) {
                 setMessage(error.message || 'No se pudo completar la solicitud.');
             } finally {
