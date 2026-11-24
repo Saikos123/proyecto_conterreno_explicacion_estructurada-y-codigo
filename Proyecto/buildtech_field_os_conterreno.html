@@ -45,12 +45,9 @@
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .workspace-card > summary::-webkit-details-marker { display: none; }
         .workspace-card { transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
         .workspace-card:hover { border-color: #cbd5e1; box-shadow: 0 12px 28px -20px rgb(15 23 42 / 45%); }
-        .workspace-card[open] { box-shadow: 0 14px 32px -24px rgb(15 23 42 / 50%); }
-        .workspace-card[open] > summary { background: #f8fafc; }
-        .workspace-card[open] .workspace-card-chevron { transform: rotate(180deg); }
+        .workspace-card > summary::-webkit-details-marker { display: none; }
         .role-workspace-masonry { column-count: 1; column-gap: 1.5rem; }
         .role-workspace-masonry > .workspace-card {
             display: inline-block;
@@ -1871,6 +1868,6 @@
             document.getElementById(id).classList.add('hidden');
         }
     </script>
-    <script src="role-screens.js?v=202611240625"></script>
+    <script src="role-screens.js?v=202611240933"></script>
 </body>
 </html>

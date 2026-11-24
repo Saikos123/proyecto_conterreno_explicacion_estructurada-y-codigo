@@ -25,7 +25,8 @@ WITH required_tables(table_name) AS (
         ('conterreno_recepciones_compra'),
         ('conterreno_facturas'),
         ('conterreno_auth_intentos'),
-        ('conterreno_historial_eventos')
+        ('conterreno_historial_eventos'),
+        ('conterreno_solicitudes_herramientas')
 ),
 required_functions(signature) AS (
     VALUES
@@ -52,6 +53,9 @@ required_functions(signature) AS (
         ('public.fn_conterreno_actualizar_herramienta(text,uuid,text,text,text)'),
         ('public.fn_conterreno_retirar_herramienta(text,uuid,text)'),
         ('public.fn_conterreno_registrar_stock_herramientas(text,text,text,integer,boolean,text,text)'),
+        ('public.fn_conterreno_solicitar_herramientas(text,text,integer,date,text)'),
+        ('public.fn_conterreno_cancelar_solicitud_herramientas(uuid)'),
+        ('public.fn_conterreno_gestionar_solicitud_herramientas(uuid,text,text)'),
         ('public.fn_conterreno_confirmar_prestamo(uuid,text,text)'),
         ('public.fn_conterreno_registrar_devolucion(uuid,text,text,text)'),
         ('public.fn_calcular_hash_kardex(jsonb)')

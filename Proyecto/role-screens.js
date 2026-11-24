@@ -38,6 +38,8 @@ let attendanceGeneration = 0;
 let toolRows = [];
 let toolSearch = '';
 let toolStatusFilter = 'TODOS';
+let toolInventoryLimit = 20;
+let toolRequestRows = [];
 
 function roleWorkspaceReady() {
     return Boolean(supabaseClient && currentUser && !state.isOffline);
@@ -55,6 +57,10 @@ async function loadKardex(targetId) {
         return;
     }
     const rows = data || [];
+    const pendingMetric = document.getElementById('worker-tool-requests');
+    if (pendingMetric) {
+        pendingMetric.textContent = String(rows.filter(row => row.estado === 'PENDIENTE').length);
+    }
     document.getElementById(targetId).innerHTML = rows.length
         ? rows.map(row => `<article class="rounded-lg border border-slate-100 bg-slate-50 p-3">
             <div class="flex flex-wrap justify-between gap-2"><strong>${escapeHtml(row.codigo_operacion)}</strong><time class="text-xs text-slate-500">${escapeHtml(new Date(row.fecha_hora).toLocaleString('es-CL'))}</time></div>
@@ -132,7 +138,7 @@ function renderRoleWorkspace() {
         content.innerHTML = `${dashboard}${renderStorekeeperWorkspace()}`;
         if (roleWorkspaceReady()) {
             loadWorkers();
-            loadTools();
+            loadToolRequests();
             loadOpenLoans('storekeeper-open-loans');
             loadStorekeeperOrders();
             loadMaterialStock();
@@ -144,6 +150,8 @@ function renderRoleWorkspace() {
         renderWorkerRequests();
         if (roleWorkspaceReady()) {
             loadWorkerLoans();
+            loadWorkerToolRequests();
+            loadWorkerToolRequestOptions();
             loadRoleDashboard(role);
         }
     }
@@ -151,14 +159,12 @@ function renderRoleWorkspace() {
     if (roleWorkspaceReady()) loadHistory();
     content.insertAdjacentHTML('beforeend', renderAttendanceWorkspace());
     if (roleWorkspaceReady()) loadAttendance();
-    content.querySelectorAll('details.workspace-card').forEach(card => {
-        card.addEventListener('toggle', () => {
-            if (!card.open) return;
-            content.querySelectorAll('details.workspace-card[open]').forEach(other => {
-                if (other !== card) other.open = false;
-            });
-        });
-    });
+    if (role === 'BODEGUERO') {
+        content.insertAdjacentHTML('beforeend', renderToolInventoryWorkspace());
+        if (roleWorkspaceReady()) {
+            loadTools();
+        }
+    }
     if (workspaceActionBusy) setWorkspaceActionLocks(true);
 }
 
@@ -216,12 +222,14 @@ function renderRoleDashboard(role) {
             accent: 'text-amber-950',
             metrics: [
                 ['storekeeper-orders', 'Pedidos por resolver', 'fa-truck-ramp-box', "scrollToRoleCard('storekeeper-orders')"],
+                ['storekeeper-tool-requests-count', 'Solicitudes de herramientas', 'fa-clipboard-check', "scrollToRoleCard('storekeeper-tool-requests')"],
                 ['storekeeper-loans', 'Préstamos abiertos', 'fa-arrow-up-right-from-square', "scrollToRoleCard('storekeeper-returns')"],
                 ['storekeeper-alerts', 'Alertas de stock', 'fa-bell', "scrollToRoleCard('storekeeper-stock-card')"],
                 ['storekeeper-stock', 'Materiales con stock', 'fa-boxes-stacked', "scrollToRoleCard('storekeeper-stock-card')"]
             ],
             actions: [
                 ['Escanear herramienta', "scrollToRoleCard('storekeeper-scan')"],
+                ['Solicitudes de herramientas', "scrollToRoleCard('storekeeper-tool-requests')"],
                 ['Atender pedidos', "scrollToRoleCard('storekeeper-orders')"],
                 ['Registrar devolución', "scrollToRoleCard('storekeeper-returns')"]
             ]
@@ -237,12 +245,14 @@ function renderRoleDashboard(role) {
             metrics: [
                 ['worker-signatures', 'Por firmar', 'fa-file-signature', "scrollToRoleCard('worker-signature-card')"],
                 ['worker-loans', 'Mis préstamos', 'fa-screwdriver-wrench', "scrollToRoleCard('worker-loans-card')"],
+                ['worker-tool-requests', 'Solicitudes de herramientas', 'fa-clipboard-question', "scrollToRoleCard('worker-tool-request-card')"],
                 ['worker-orders', 'Pedidos pendientes', 'fa-cart-shopping', "switchTab('bodega')"],
                 ['worker-stock', 'Materiales disponibles', 'fa-boxes-stacked', "scrollToRoleCard('worker-material-stock-card')"]
             ],
             actions: [
                 ['Marcar asistencia', "scrollToRoleCard('worker-attendance-card')"],
                 ['Firmar recepción', "scrollToRoleCard('worker-signature-card')"],
+                ['Solicitar herramienta', "scrollToRoleCard('worker-tool-request-card')"],
                 ['Solicitar material', "switchTab('bodega')"]
             ]
         }
@@ -269,7 +279,7 @@ function renderRoleDashboard(role) {
                 ).join('')}</div>
             </div>
             <div class="role-hero-metrics grid grid-cols-2 gap-2 sm:gap-3 ${view.metrics.length > 4 ? 'xl:grid-cols-3' : 'xl:grid-cols-4'}">
-                ${view.metrics.map(([id, label, icon, action]) => `<button type="button" onclick="${action}" aria-label="${label}: abrir detalle" class="role-metric group relative min-h-24 min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.09] p-3 text-left transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.15] focus:outline-none focus:ring-2 focus:ring-white/70 sm:p-4">
+                ${view.metrics.map(([id, label, icon, action]) => `<button type="button" onclick="${action}" aria-label="${label}: ir a la sección" class="role-metric group relative min-h-24 min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.09] p-3 text-left transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.15] focus:outline-none focus:ring-2 focus:ring-white/70 sm:p-4">
                     <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 ${view.accent}"><i class="fa-solid ${icon}" aria-hidden="true"></i></span>
                     <span id="metric-${id}" class="mt-3 block text-2xl font-black tabular-nums" aria-live="polite">—</span>
                     <span class="mt-1 block text-[10px] font-semibold leading-snug opacity-75 sm:text-[11px]">${label}</span>
@@ -439,6 +449,43 @@ function renderManagerWorkspace() {
     </div>`;
 }
 
+function renderToolInventoryWorkspace() {
+    return `<details id="storekeeper-tool-inventory" class="workspace-card scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-amber-500 bg-white shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500 sm:px-5">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-800">
+                <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+                <strong class="block text-sm font-bold text-slate-900 sm:text-base">Inventario de herramientas</strong>
+                <span class="mt-0.5 block whitespace-normal break-words text-[11px] leading-snug text-slate-500">Consulta, filtra y exporta el stock individual de la obra.</span>
+            </span>
+            <i class="fa-solid fa-chevron-down shrink-0 text-xs text-slate-400" aria-hidden="true"></i>
+        </summary>
+        <div class="border-t border-slate-100 p-4 sm:p-5">
+            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                <label class="block text-xs font-bold text-slate-700">Buscar por nombre, etiqueta o serie
+                    <input id="tool-inventory-search" type="search" oninput="filterToolInventory(this.value)" placeholder="Ej. Taladro, HERR-..." class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                </label>
+                <label class="block text-xs font-bold text-slate-700">Estado
+                    <select id="tool-inventory-status" onchange="filterToolInventoryStatus(this.value)" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                        <option value="TODOS">Todos</option>
+                        <option value="DISPONIBLE">Disponible</option>
+                        <option value="EN_USO">En préstamo</option>
+                        <option value="EN_MANTENCION">En mantención</option>
+                        <option value="DANIADO">Dañado</option>
+                        <option value="DADO_DE_BAJA">Dado de baja</option>
+                    </select>
+                </label>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" onclick="exportToolInventoryXlsx()" class="min-h-10 rounded-lg bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white">Exportar Excel (.xlsx)</button>
+                <button type="button" onclick="printToolInventoryPdf()" class="min-h-10 rounded-lg bg-slate-100 px-3 py-2.5 text-xs font-bold text-slate-800">Imprimir / guardar PDF</button>
+            </div>
+            <div id="tool-inventory-results" class="mt-4 max-h-[32rem] space-y-2 overflow-y-auto pr-1 text-sm text-slate-600">Cargando inventario...</div>
+        </div>
+    </details>`;
+}
+
 function renderStorekeeperWorkspace() {
     return `<div class="role-workspace-masonry role-workspace-masonry--compact">
         ${workspaceCard('Lectura de etiqueta', 'Escanea con cámara o busca manualmente una etiqueta/QR existente.', `
@@ -463,34 +510,21 @@ function renderStorekeeperWorkspace() {
                 ${workspaceField('Descripción', 'bulk-tool-description', 'text', false)}
                 <button class="sm:col-span-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">Registrar herramienta y stock</button>
             </form>`, 'fa-box-open', 'storekeeper-tool-registration')}
-        ${workspaceCard('Inventario de herramientas', 'Consulta, filtra y exporta el stock individual de la obra.', `
-            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-                <label class="block text-xs font-bold text-slate-700">Buscar por nombre, etiqueta o serie
-                    <input id="tool-inventory-search" type="search" oninput="filterToolInventory(this.value)" placeholder="Ej. Taladro, HERR-..." class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
-                </label>
-                <label class="block text-xs font-bold text-slate-700">Estado
-                    <select id="tool-inventory-status" onchange="filterToolInventoryStatus(this.value)" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
-                        <option value="TODOS">Todos</option>
-                        <option value="DISPONIBLE">Disponible</option>
-                        <option value="EN_USO">En préstamo</option>
-                        <option value="EN_MANTENCION">En mantención</option>
-                        <option value="DANIADO">Dañado</option>
-                        <option value="DADO_DE_BAJA">Dado de baja</option>
-                    </select>
-                </label>
+        <details id="storekeeper-tool-requests" class="workspace-card scroll-mt-24 overflow-hidden rounded-2xl border border-slate-200 border-t-4 border-t-amber-500 bg-white shadow-sm">
+            <summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500 sm:px-5">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-800">
+                    <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                    <strong class="block text-sm font-bold text-slate-900 sm:text-base">Solicitudes de herramientas</strong>
+                    <span class="mt-0.5 block whitespace-normal break-words text-[11px] leading-snug text-slate-500">El Operario solicita unidades; Bodega aprueba, rechaza o entrega las disponibles.</span>
+                </span>
+                <i class="fa-solid fa-chevron-down shrink-0 text-xs text-slate-400" aria-hidden="true"></i>
+            </summary>
+            <div class="border-t border-slate-100 p-4 sm:p-5">
+                <div id="storekeeper-tool-requests-content" class="max-h-[20rem] space-y-3 overflow-y-auto pr-1 text-sm text-slate-600">Cargando solicitudes...</div>
             </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <button type="button" onclick="exportToolInventoryXlsx()" class="min-h-10 rounded-lg bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white">Exportar Excel (.xlsx)</button>
-                <button type="button" onclick="printToolInventoryPdf()" class="min-h-10 rounded-lg bg-slate-100 px-3 py-2.5 text-xs font-bold text-slate-800">Imprimir / guardar PDF</button>
-            </div>
-            <div id="tool-inventory-results" class="mt-4 max-h-[32rem] overflow-auto rounded-xl border border-slate-200 p-3 text-sm text-slate-600">Cargando inventario...</div>`, 'fa-screwdriver-wrench', 'storekeeper-tool-inventory')}
-        ${workspaceCard('Registrar préstamo', 'Selecciona la herramienta disponible y el trabajador asignado a esta obra.', `
-            <form onsubmit="storekeeperRegisterLoan(event)" class="grid gap-3">
-                ${workspaceSelect('Herramienta disponible', 'loan-tool-select', '<option value="">Cargando herramientas...</option>')}
-                ${workspaceSelect('Trabajador', 'loan-worker-select', '<option value="">Cargando trabajadores...</option>')}
-                ${workspaceField('Fecha prevista de devolución', 'loan-due-date', 'date')}
-                <button class="rounded-lg bg-amber-500 px-4 py-3 text-sm font-extrabold text-slate-950">Registrar entrega</button>
-            </form>`, 'fa-arrow-up-right-from-square')}
+        </details>
         ${workspaceCard('Préstamos activos y devolución', 'Registra la condición al recibir el equipo. Si llega dañado, adjunta evidencia fotográfica.', `
             <div id="storekeeper-open-loans" class="mb-4 overflow-x-auto text-sm text-slate-600">Cargando préstamos...</div>
             <form onsubmit="storekeeperRegisterReturn(event)" class="grid gap-3 border-t border-slate-100 pt-4">
@@ -535,6 +569,15 @@ function renderWorkerWorkspace() {
             </div>`, 'fa-user-clock', 'worker-attendance-card')}
         ${workspaceCard('Mis préstamos', 'Solo se muestran las herramientas asignadas a tu cuenta.', `
             <div id="worker-loans" class="space-y-3 text-sm text-slate-600">Cargando tus préstamos...</div>`, 'fa-screwdriver-wrench', 'worker-loans-card')}
+        ${workspaceCard('Solicitar herramientas', 'Solicita una herramienta disponible o varias unidades; Bodega aprobará y asignará las unidades disponibles.', `
+            <form onsubmit="workerRequestTools(event)" class="grid gap-3">
+                ${workspaceSelect('Herramienta necesaria', 'worker-tool-request-name', '<option value="">Cargando herramientas disponibles...</option>')}
+                ${workspaceField('Cantidad', 'worker-tool-request-quantity', 'number', true, 'min="1" max="100" step="1" value="1"')}
+                ${workspaceField('Fecha de devolución', 'worker-tool-request-due', 'date', true, `min="${dateInputValue(new Date())}"`)}
+                ${workspaceField('Motivo o tarea', 'worker-tool-request-reason', 'text', false)}
+                <button class="rounded-lg bg-emerald-700 px-4 py-3 text-sm font-bold text-white">Enviar solicitud</button>
+            </form>
+            <div id="worker-tool-request-history" class="mt-4 space-y-2 text-sm text-slate-600">Cargando solicitudes...</div>`, 'fa-clipboard-question', 'worker-tool-request-card')}
         ${workspaceCard('Firma de recepción', 'Confirma aquí la recepción de la herramienta seleccionada.', `
             <div id="worker-signature-loan" class="mb-3 text-sm text-slate-600">Selecciona un préstamo pendiente de firma en la lista.</div>
             <canvas id="worker-signature-pad" width="800" height="280" class="h-36 w-full touch-none rounded-xl border-2 border-dashed border-slate-300 bg-white sm:h-44"></canvas>
@@ -1075,7 +1118,7 @@ function renderAdminProjectList() {
                     <button data-project-id="${escapeHtml(project.id)}" data-project-name="${escapeHtml(project.nombre)}" onclick="adminUpdateProject(this.dataset.projectId,this.dataset.projectName,${!project.activo})" class="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">${project.activo ? 'Desactivar' : 'Activar'}</button></span>
                 </div>
                 <details class="mt-2">
-                    <summary class="cursor-pointer text-xs font-semibold text-slate-600">Editar vigencia y jornada</summary>
+                    <summary class="cursor-pointer text-xs font-semibold text-slate-600">Ver vigencia y jornada</summary>
                     <form data-project-id="${escapeHtml(project.id)}" onsubmit="adminUpdateProjectSchedule(event)" class="mt-3 grid gap-3 rounded-lg bg-slate-50 p-3">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <label class="text-xs font-semibold">Inicio<input name="start" type="date" value="${escapeHtml(project.fecha_inicio || '')}" class="mt-1 w-full rounded border border-slate-300 p-2"></label>
@@ -1467,6 +1510,159 @@ async function loadWorkers() {
         (data || []).map(worker => `<option value="${worker.id_usuario}">${escapeHtml(worker.nombre_completo)} · ${escapeHtml(worker.rut)}</option>`).join('');
 }
 
+async function workerRequestTools(event) {
+    event.preventDefault();
+    const quantity = Number(document.getElementById('worker-tool-request-quantity').value);
+    const name = document.getElementById('worker-tool-request-name').value;
+    const dueDate = document.getElementById('worker-tool-request-due').value;
+    if (!name) {
+        showToast('Indica la herramienta que necesitas.', 'error');
+        return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+        showToast('Indica una cantidad entre 1 y 100.', 'error');
+        return;
+    }
+    const today = dateInputValue(new Date());
+    if (!dueDate || dueDate < today) {
+        showToast('Indica una fecha de devolución igual o posterior a hoy.', 'error');
+        return;
+    }
+    await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_solicitar_herramientas', {
+        p_proyecto_id: state.currentProject,
+        p_nombre_herramienta: name,
+        p_cantidad: quantity,
+        p_fecha_devolucion: dueDate,
+        p_motivo: document.getElementById('worker-tool-request-reason').value.trim() || null
+    }), 'Solicitud de herramientas enviada a Bodega.');
+    await loadWorkerToolRequests();
+}
+
+async function workerCancelToolRequest(requestId) {
+    if (!window.confirm('¿Cancelar esta solicitud de herramientas?')) return;
+    await workspaceAction(async () => supabaseClient.rpc(
+        'fn_conterreno_cancelar_solicitud_herramientas',
+        { p_solicitud_id: requestId }
+    ), 'Solicitud cancelada.');
+    await loadWorkerToolRequests();
+    await loadWorkerToolRequestOptions();
+}
+
+async function loadWorkerToolRequestOptions() {
+    const { data, error } = await supabaseClient
+        .from('equipos_herramientas')
+        .select('nombre')
+        .eq('proyecto_id', state.currentProject)
+        .eq('activo', true)
+        .eq('disponible', true)
+        .eq('estado_fisico', 'OPTIMO')
+        .order('nombre');
+    const select = document.getElementById('worker-tool-request-name');
+    if (!select) return;
+    if (error) {
+        select.innerHTML = '<option value="">No fue posible cargar herramientas</option>';
+        showToast(`No se pudieron cargar herramientas disponibles: ${error.message}`, 'error');
+        return;
+    }
+    const names = [...new Set((data || []).map(row => row.nombre).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'es'));
+    select.innerHTML = '<option value="">Selecciona una herramienta</option>' +
+        names.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+}
+
+async function loadWorkerToolRequests() {
+    const { data, error } = await supabaseClient
+        .from('conterreno_solicitudes_herramientas')
+        .select('id,nombre_herramienta,cantidad,fecha_devolucion_prevista,motivo,estado,motivo_resolucion,creado_en,procesado_en')
+        .eq('proyecto_id', state.currentProject)
+        .eq('solicitado_por', currentUser.id)
+        .order('creado_en', { ascending: false })
+        .limit(50);
+    const target = document.getElementById('worker-tool-request-history');
+    if (!target) return;
+    if (error) {
+        showWorkspaceError('worker-tool-request-history', new Error(error.message));
+        return;
+    }
+    const rows = data || [];
+    target.innerHTML = rows.length
+        ? rows.map(row => {
+            const statusClass = row.estado === 'ENTREGADA'
+                ? 'bg-emerald-100 text-emerald-800'
+                : row.estado === 'RECHAZADA'
+                    ? 'bg-rose-100 text-rose-800'
+                    : 'bg-amber-100 text-amber-800';
+            return `<article class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div class="flex items-start justify-between gap-2"><strong>${escapeHtml(row.nombre_herramienta)} × ${row.cantidad}</strong><span class="rounded-full px-2 py-1 text-[10px] font-bold ${statusClass}">${escapeHtml(row.estado)}</span></div>
+                <p class="mt-1 text-xs text-slate-500">${escapeHtml(new Date(row.creado_en).toLocaleString('es-CL'))} · Devolver: ${escapeHtml(row.fecha_devolucion_prevista)}</p>
+                ${row.motivo ? `<p class="mt-2 text-xs">Motivo: ${escapeHtml(row.motivo)}</p>` : ''}
+                ${row.motivo_resolucion ? `<p class="mt-2 rounded bg-rose-50 p-2 text-xs text-rose-800">${escapeHtml(row.motivo_resolucion)}</p>` : ''}
+                ${row.estado === 'PENDIENTE' ? `<button type="button" data-request-id="${row.id}" onclick="workerCancelToolRequest(this.dataset.requestId)" class="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Cancelar solicitud</button>` : ''}
+            </article>`;
+        }).join('')
+        : '<p class="rounded-lg bg-slate-50 p-3">No has solicitado herramientas.</p>';
+}
+
+async function loadToolRequests() {
+    const { data, error } = await supabaseClient
+        .from('conterreno_solicitudes_herramientas')
+        .select('id,nombre_herramienta,cantidad,fecha_devolucion_prevista,motivo,estado,creado_en,solicitado_por')
+        .eq('proyecto_id', state.currentProject)
+        .eq('estado', 'PENDIENTE')
+        .order('creado_en', { ascending: true })
+        .limit(50);
+    const target = document.getElementById('storekeeper-tool-requests-content');
+    if (!target) return;
+    if (error) {
+        showWorkspaceError('storekeeper-tool-requests-content', new Error(error.message));
+        return;
+    }
+    const rows = data || [];
+    const metric = document.getElementById('storekeeper-tool-requests-count');
+    if (metric) {
+        metric.textContent = String(rows.length);
+    }
+    target.innerHTML = rows.length
+        ? rows.map(row => `<article class="rounded-xl border border-slate-200 p-3">
+            <div class="flex items-start justify-between gap-2"><strong>${escapeHtml(row.nombre_herramienta)} × ${row.cantidad}</strong><span class="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-800">PENDIENTE</span></div>
+            <p class="mt-1 text-xs text-slate-500">${escapeHtml(new Date(row.creado_en).toLocaleString('es-CL'))} · Devolver: ${escapeHtml(row.fecha_devolucion_prevista)}</p>
+            ${row.motivo ? `<p class="mt-2 text-xs">${escapeHtml(row.motivo)}</p>` : ''}
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" onclick="storekeeperProcessToolRequest('${row.id}','APROBAR_ENTREGAR')" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Aprobar y entregar</button>
+                <button type="button" onclick="storekeeperProcessToolRequest('${row.id}','RECHAZAR')" class="rounded-lg bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Rechazar</button>
+            </div>
+        </article>`).join('')
+        : `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <strong class="block text-sm text-emerald-900">Solicitudes de herramientas</strong>
+            <p class="mt-1 text-xs text-emerald-800">No hay solicitudes pendientes para revisar.</p>
+        </div>`;
+}
+
+async function storekeeperProcessToolRequest(requestId, action) {
+    let reason = null;
+    if (action === 'RECHAZAR') {
+        reason = window.prompt('Motivo del rechazo (mínimo 3 caracteres):');
+        if (reason === null) return;
+        if (reason.trim().length < 3) {
+            showToast('El motivo debe tener al menos 3 caracteres.', 'error');
+            return;
+        }
+    } else if (action !== 'APROBAR_ENTREGAR') {
+        showToast('Acción no válida.', 'error');
+        return;
+    }
+    await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_gestionar_solicitud_herramientas', {
+        p_solicitud_id: requestId,
+        p_accion: action,
+        p_motivo: reason
+    }), action === 'APROBAR_ENTREGAR'
+        ? 'Solicitud aprobada y herramientas entregadas.'
+        : 'Solicitud rechazada.');
+    await loadToolRequests();
+    await loadTools();
+    await loadOpenLoans('storekeeper-open-loans');
+}
+
 async function loadTools() {
     const generation = roleWorkspaceGeneration;
     const [{ data, error }, { data: openLoans, error: loanError }] = await Promise.all([
@@ -1516,11 +1712,18 @@ function filteredToolRows() {
 
 function filterToolInventory(query) {
     toolSearch = query || '';
+    toolInventoryLimit = 20;
     renderToolInventory();
 }
 
 function filterToolInventoryStatus(status) {
     toolStatusFilter = status || 'TODOS';
+    toolInventoryLimit = 20;
+    renderToolInventory();
+}
+
+function showMoreToolInventory() {
+    toolInventoryLimit += 20;
     renderToolInventory();
 }
 
@@ -1537,11 +1740,46 @@ function renderToolInventory() {
         stockByName.set(model, stock);
     }
     const rows = filteredToolRows();
+    const visibleRows = rows.slice(0, toolInventoryLimit);
+    const hasMore = visibleRows.length < rows.length;
     target.innerHTML = rows.length
-        ? `<div class="max-h-[32rem] overflow-auto"><table class="w-full min-w-[820px] text-left text-xs"><thead class="sticky top-0 bg-white text-slate-500"><tr><th class="p-2">Herramienta y stock</th><th class="p-2">Etiqueta</th><th class="p-2">Serie</th><th class="p-2">Estado</th><th class="p-2">Disponibilidad</th><th class="p-2">Fecha de registro</th><th class="p-2">Acciones</th></tr></thead><tbody>${rows.map(tool => {
+        ? `${visibleRows.map(tool => {
             const stock = stockByName.get(tool.nombre) || { total: 0, disponible: 0, enUso: 0 };
-            return `<tr class="border-t border-slate-100"><td class="p-2"><strong class="block text-slate-900">${escapeHtml(tool.nombre)}</strong><span class="mt-1 inline-block rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">Stock ${stock.total} · Disponible ${stock.disponible} · En préstamo ${stock.enUso}</span></td><td class="p-2">${escapeHtml(tool.codigo_tag_iot)}</td><td class="p-2">${escapeHtml(tool.numero_serie)}</td><td class="p-2"><span id="tool-status-label-${tool.id_equipo}" class="inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${tool.estado_fisico === 'OPTIMO' ? 'bg-emerald-100 text-emerald-800' : tool.estado_fisico === 'EN_MANTENCION' ? 'bg-sky-100 text-sky-800' : tool.estado_fisico === 'DANIADO' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'}">${escapeHtml(tool.estado_fisico)}</span></td><td class="p-2" id="tool-availability-${tool.id_equipo}">${tool.en_prestamo ? 'En préstamo' : tool.estado_fisico === 'EN_MANTENCION' ? 'En mantenimiento' : tool.estado_fisico === 'DANIADO' ? 'No disponible' : tool.estado_fisico === 'DADO_DE_BAJA' ? 'Dada de baja' : 'Disponible'}</td><td class="whitespace-nowrap p-2 text-slate-500">${escapeHtml(tool.creado_en ? new Date(tool.creado_en).toLocaleString('es-CL') : 'Sin fecha')}</td><td class="p-2"><select id="tool-state-${tool.id_equipo}" data-tool-id="${tool.id_equipo}" aria-label="Cambiar estado de ${escapeHtml(tool.nombre)}" onchange="storekeeperChangeToolState(this.dataset.toolId)" class="min-h-9 rounded-lg border border-slate-300 px-2 py-1"><option value="OPTIMO" ${tool.estado_fisico === 'OPTIMO' ? 'selected' : ''}>Óptimo</option><option value="DANIADO" ${tool.estado_fisico === 'DANIADO' ? 'selected' : ''}>Dañado</option><option value="EN_MANTENCION" ${tool.estado_fisico === 'EN_MANTENCION' ? 'selected' : ''}>En mantención</option><option value="DADO_DE_BAJA" ${tool.estado_fisico === 'DADO_DE_BAJA' ? 'selected' : ''}>Dado de baja</option></select><button data-tool-id="${tool.id_equipo}" data-tool-name="${escapeHtml(tool.nombre)}" data-tool-tag="${escapeHtml(tool.codigo_tag_iot)}" onclick="storekeeperRetireTool(this.dataset.toolId,this.dataset.toolName,this.dataset.toolTag)" class="ml-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700">Dar de baja</button></td></tr>`;
-        }).join('')}</tbody></table></div>`
+            const availability = tool.en_prestamo
+                ? 'En préstamo'
+                : tool.estado_fisico === 'EN_MANTENCION'
+                    ? 'En mantenimiento'
+                    : tool.estado_fisico === 'DANIADO'
+                        ? 'No disponible'
+                        : tool.estado_fisico === 'DADO_DE_BAJA'
+                            ? 'Dada de baja'
+                            : 'Disponible';
+            return `<article class="rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <strong class="block break-words text-sm text-slate-900">${escapeHtml(tool.nombre)}</strong>
+                        <p class="mt-1 text-[10px] font-semibold text-slate-500">Stock ${stock.total} · Disponible ${stock.disponible} · En préstamo ${stock.enUso}</p>
+                    </div>
+                    <time class="whitespace-nowrap text-[10px] text-slate-500">${escapeHtml(tool.creado_en ? new Date(tool.creado_en).toLocaleString('es-CL') : 'Sin fecha')}</time>
+                </div>
+                <dl class="mt-3 grid gap-2 text-[11px] sm:grid-cols-2">
+                    <div><dt class="font-semibold text-slate-500">Etiqueta</dt><dd class="mt-0.5 break-all text-slate-800">${escapeHtml(tool.codigo_tag_iot)}</dd></div>
+                    <div><dt class="font-semibold text-slate-500">Serie</dt><dd class="mt-0.5 break-all text-slate-800">${escapeHtml(tool.numero_serie)}</dd></div>
+                    <div><dt class="font-semibold text-slate-500">Estado</dt><dd id="tool-status-label-${tool.id_equipo}" class="mt-0.5 font-bold text-slate-800">${escapeHtml(tool.estado_fisico)}</dd></div>
+                    <div><dt class="font-semibold text-slate-500">Disponibilidad</dt><dd id="tool-availability-${tool.id_equipo}" class="mt-0.5 font-bold text-slate-800">${availability}</dd></div>
+                </dl>
+                <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <label class="sr-only" for="tool-state-${tool.id_equipo}">Cambiar estado de ${escapeHtml(tool.nombre)}</label>
+                    <select id="tool-state-${tool.id_equipo}" data-tool-id="${tool.id_equipo}" onchange="storekeeperChangeToolState(this.dataset.toolId)" class="min-h-10 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1">
+                        <option value="OPTIMO" ${tool.estado_fisico === 'OPTIMO' ? 'selected' : ''}>Óptimo</option>
+                        <option value="DANIADO" ${tool.estado_fisico === 'DANIADO' ? 'selected' : ''}>Dañado</option>
+                        <option value="EN_MANTENCION" ${tool.estado_fisico === 'EN_MANTENCION' ? 'selected' : ''}>En mantención</option>
+                        <option value="DADO_DE_BAJA" ${tool.estado_fisico === 'DADO_DE_BAJA' ? 'selected' : ''}>Dado de baja</option>
+                    </select>
+                    <button data-tool-id="${tool.id_equipo}" data-tool-name="${escapeHtml(tool.nombre)}" data-tool-tag="${escapeHtml(tool.codigo_tag_iot)}" onclick="storekeeperRetireTool(this.dataset.toolId,this.dataset.toolName,this.dataset.toolTag)" class="min-h-10 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">Dar de baja</button>
+                </div>
+            </article>`;
+        }).join('')}${hasMore ? '<button type="button" onclick="showMoreToolInventory()" class="mt-2 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Mostrar más herramientas</button>' : ''}`
         : '<p>No hay herramientas que coincidan con el filtro.</p>';
 }
 
@@ -1679,21 +1917,63 @@ async function storekeeperChangeToolState(toolId) {
 }
 
 async function storekeeperRetireTool(toolId, toolName, toolTag) {
-    const reason = window.prompt(
-        `Motivo de la baja de "${toolName}" (${toolTag}). Mínimo 3 caracteres:`
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
+    openToolRetirementDialog(toolId, toolName, toolTag);
+}
+
+function openToolRetirementDialog(toolId, toolName, toolTag) {
+    let dialog = document.getElementById('tool-retirement-dialog');
+    if (!dialog) {
+        dialog = document.createElement('div');
+        dialog.id = 'tool-retirement-dialog';
+        dialog.className = 'fixed inset-0 z-[80] hidden items-center justify-center bg-slate-950/60 p-4';
+        dialog.innerHTML = `
+            <div role="dialog" aria-modal="true" aria-labelledby="tool-retirement-title" class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+                <h2 id="tool-retirement-title" class="text-base font-extrabold text-slate-900">Confirmar baja de herramienta</h2>
+                <p id="tool-retirement-detail" class="mt-2 text-sm text-slate-600"></p>
+                <label class="mt-4 block text-xs font-bold text-slate-700">Motivo de la baja
+                    <textarea id="tool-retirement-reason" required minlength="3" rows="3" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Ej. Equipo retirado por daño irreparable"></textarea>
+                </label>
+                <p class="mt-2 text-[11px] text-slate-500">La herramienta conservará su historial, pero desaparecerá del inventario activo.</p>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" id="tool-retirement-cancel" class="min-h-10 rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700">Cancelar</button>
+                    <button type="button" id="tool-retirement-confirm" class="min-h-10 rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white">Confirmar baja</button>
+                </div>
+            </div>`;
+        document.body.appendChild(dialog);
+    }
+    dialog.dataset.toolId = toolId;
+    document.getElementById('tool-retirement-detail').textContent =
+        `${toolName} · ${toolTag}. La baja es lógica y no elimina su historial.`;
+    document.getElementById('tool-retirement-reason').value = '';
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+    document.getElementById('tool-retirement-cancel').onclick = closeToolRetirementDialog;
+    document.getElementById('tool-retirement-confirm').onclick = confirmToolRetirement;
+    document.getElementById('tool-retirement-reason').focus();
+}
+
+function closeToolRetirementDialog() {
+    const dialog = document.getElementById('tool-retirement-dialog');
+    if (!dialog) return;
+    dialog.classList.add('hidden');
+    dialog.classList.remove('flex');
+}
+
+async function confirmToolRetirement() {
+    const dialog = document.getElementById('tool-retirement-dialog');
+    const reason = document.getElementById('tool-retirement-reason').value.trim();
+    if (!dialog) return;
+    if (reason.length < 3) {
         showToast('El motivo de la baja debe tener al menos 3 caracteres.', 'error');
+        document.getElementById('tool-retirement-reason').focus();
         return;
     }
-    if (!window.confirm(`Confirmar baja de "${toolName}" (${toolTag})?\nLa herramienta desaparecerá del inventario activo, pero se conservará su historial.`)) {
-        return;
-    }
+    const toolId = dialog.dataset.toolId;
+    closeToolRetirementDialog();
     await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_retirar_herramienta', {
         p_proyecto_id: state.currentProject,
         p_id_equipo: toolId,
-        p_motivo: reason.trim()
+        p_motivo: reason
     }), 'Herramienta dada de baja y retirada del inventario activo.');
     await loadTools();
 }
@@ -2053,9 +2333,6 @@ async function workspaceAction(action, successMessage) {
     }
 
     const content = document.getElementById('role-workspace-content');
-    const openCards = [...(content?.querySelectorAll('details.workspace-card') || [])];
-    const openCardIndex = openCards.findIndex(card => card.open);
-    const openCardId = openCardIndex >= 0 ? openCards[openCardIndex].id : '';
     const scrollPosition = window.scrollY;
     workspaceActionBusy = true;
     setWorkspaceActionLocks(true);
@@ -2071,12 +2348,6 @@ async function workspaceAction(action, successMessage) {
         if (error) throw new Error(error.message);
         showToast(successMessage, 'success');
         renderRoleWorkspace();
-        const updatedContent = document.getElementById('role-workspace-content');
-        const updatedCards = [...(updatedContent?.querySelectorAll('details.workspace-card') || [])];
-        const restoredCard = openCardId
-            ? updatedCards.find(card => card.id === openCardId)
-            : updatedCards[openCardIndex];
-        if (restoredCard) restoredCard.open = true;
         window.requestAnimationFrame(() => window.scrollTo(0, scrollPosition));
         return data;
     } catch (error) {

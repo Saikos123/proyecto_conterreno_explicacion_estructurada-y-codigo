@@ -313,6 +313,8 @@ la base Supabase remota ni con usuarios reales.
      etiquetas y series únicas por lote, marca opcional de prueba y Kardex.
    - [ ] Confirmar que “En préstamo” solo se muestra con un préstamo abierto;
      mantenimiento, daño y baja se muestran como estados físicos independientes.
+   - [ ] Aplicar y probar las solicitudes de herramientas: Operario solicita y
+     cancela pendientes; Bodega aprueba o rechaza; Jefatura solo supervisa.
    - [ ] Verificar el resumen de stock por modelo junto con el listado individual
      de etiquetas y estados en Bodega, Jefatura y Operario.
 

@@ -169,6 +169,8 @@ del servidor Auth; configura también el timeout remoto y sus límites nativos.
 
 - En la tarjeta del escáner, ingresa una etiqueta o usa la cámara para buscar
   una herramienta.
+- Consulta las solicitudes de herramientas enviadas por Operarios y puede
+  aprobarlas entregando unidades disponibles o rechazarlas con motivo.
 - **Registrar herramienta y stock** crea una unidad con cantidad 1 o varias
   unidades en lote hasta 100. Los campos de etiqueta y serie son opcionales;
   si se omiten, el sistema genera identificadores únicos.
@@ -196,6 +198,10 @@ del servidor Auth; configura también el timeout remoto y sus límites nativos.
 
 - Consulta sus préstamos y selecciona una entrega pendiente para firmar su
   recepción.
+- Puede solicitar herramientas por nombre y cantidad. Bodega aprueba y entrega
+  las unidades disponibles o rechaza la solicitud indicando el motivo.
+- Puede cancelar una solicitud pendiente mientras Bodega no la haya aprobado
+  o rechazado.
 - Revisa las herramientas y materiales disponibles para su obra.
 - Abre **Pedidos Bodega** para solicitar materiales y revisar sus pedidos.
 - Usa **Incidencias** para reportar un problema de terreno.

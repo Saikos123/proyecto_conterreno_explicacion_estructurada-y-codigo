@@ -1,0 +1,47 @@
+ESCENARIO 08 - DESPACHO QR Y FIRMA
+
+Estado: Pendiente de ejecucion y captura.
+Fecha de ejecucion: No ejecutada en esta revision.
+
+Objetivo:
+Validar el flujo de despacho con identificacion QR, trabajador destinatario,
+firma de recepcion y persistencia del prestamo/estado del equipo.
+
+Pasos para la prueba:
+1. Preparar una herramienta disponible y una cuenta Operario de prueba en la
+   misma obra.
+2. Como Bodeguero, buscar o escanear la etiqueta QR de la herramienta.
+3. Confirmar que aparece la herramienta correcta, disponible y sin préstamo
+   abierto.
+4. Seleccionar una cuenta Operario real de prueba asignada a la misma obra,
+   indicar la fecha de devolución y registrar el despacho. La herramienta debe
+   pasar a "En préstamo".
+5. Cerrar la sesión de Bodega e iniciar como Operario.
+6. Abrir "Mis préstamos" y confirmar que aparece la herramienta entregada.
+7. Seleccionar el préstamo, dibujar una firma de prueba en el lienzo y
+   confirmar la recepción. Si falla el almacenamiento o el hash, no marcar la
+   prueba como aprobada.
+8. Como Bodeguero, verificar la devolución disponible y usar la condición
+   adecuada cuando se haga la devolución.
+
+Resultado esperado:
+Bodega registra el despacho y el equipo queda "En préstamo", relacionado con
+el Operario correcto. El Operario recibe el préstamo, firma desde su propio
+panel y la evidencia queda vinculada al préstamo. Si la firma no puede
+guardarse, el préstamo sigue pendiente y no debe presentarse como aprobado.
+
+Resultado observado:
+No ejecutado. No se ha capturado ni comprobado este flujo en esta revision.
+
+Capturas requeridas:
+08 - QR reconocido.png — debe tomarse como Bodeguero.
+08 - Despacho confirmado por Bodeguero.png — confirma el préstamo y el equipo
+   en estado "En préstamo".
+08 - Firma y confirmacion de recepcion.png — debe tomarse como Operario,
+   después de dibujar la firma de prueba y antes de cerrar el panel.
+08 - Prestamo en panel del trabajador.png — verifica que el Operario ve la
+   herramienta entregada y su estado pendiente de firma o recepción.
+
+Privacidad:
+Usar solo una firma de prueba. No capturar firmas reales, identificadores
+personales, contrasenas ni credenciales de Supabase.
