@@ -47,7 +47,14 @@ required_functions(signature) AS (
         ('public.fn_conterreno_admin_crear_proyecto_con_plazo(text,text,date,date,smallint[],time,time)'),
         ('public.fn_conterreno_admin_actualizar_plazo_proyecto(text,date,date,smallint[],time,time)'),
         ('public.fn_conterreno_registrar_prestamo(text,uuid,uuid,date)'),
-        ('public.fn_conterreno_consultar_asistencia_mensual(text,date)')
+        ('public.fn_conterreno_consultar_asistencia_mensual(text,date)'),
+        ('public.fn_conterreno_crear_herramienta(text,text,text,text,text)'),
+        ('public.fn_conterreno_actualizar_herramienta(text,uuid,text,text,text)'),
+        ('public.fn_conterreno_retirar_herramienta(text,uuid,text)'),
+        ('public.fn_conterreno_registrar_stock_herramientas(text,text,text,integer,boolean,text,text)'),
+        ('public.fn_conterreno_confirmar_prestamo(uuid,text,text)'),
+        ('public.fn_conterreno_registrar_devolucion(uuid,text,text,text)'),
+        ('public.fn_calcular_hash_kardex(jsonb)')
 ),
 required_roles(role_code) AS (
     VALUES
@@ -282,6 +289,40 @@ checks AS (
             WHERE t.tgrelid = to_regclass('public.conterreno_tareas')
               AND t.tgname = 'trg_historial_tareas'
               AND NOT t.tgisinternal
+        )
+    UNION ALL
+    SELECT
+        'trigger',
+        'trg_establecer_hash_kardex',
+        EXISTS (
+            SELECT 1
+            FROM pg_trigger AS t
+            WHERE t.tgrelid = to_regclass('public.kardex_transaccional')
+              AND t.tgname = 'trg_establecer_hash_kardex'
+              AND NOT t.tgisinternal
+        )
+    UNION ALL
+    SELECT
+        'extension',
+        'pgcrypto',
+        EXISTS (
+            SELECT 1
+            FROM pg_extension
+            WHERE extname = 'pgcrypto'
+        )
+    UNION ALL
+    SELECT
+        'function definition',
+        'fn_calcular_hash_kardex uses extensions.digest',
+        EXISTS (
+            SELECT 1
+            FROM pg_proc AS p
+            WHERE p.oid = to_regprocedure(
+                'public.fn_calcular_hash_kardex(jsonb)'
+            )
+              AND position(
+                  'extensions.digest' IN lower(pg_get_functiondef(p.oid))
+              ) > 0
         )
 )
 SELECT

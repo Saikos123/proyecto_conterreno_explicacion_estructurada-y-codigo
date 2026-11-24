@@ -251,6 +251,32 @@ la base Supabase remota ni con usuarios reales.
 
 ### Funcionalidad pendiente por rol
 
+#### Matriz de chequeos funcionales por rol
+
+| Rol | Debe poder probar | Debe rechazar | Evidencia requerida | Estado |
+|---|---|---|---|---|
+| Administrador | Crear cuenta, revisar solicitudes, asignar rol/obra, crear obra, gestionar proveedores, consultar auditoría e historial global dentro de su permiso | Prestar herramientas, despachar pedidos, registrar devoluciones, registrar asistencia propia como Operario | Captura del alta, asignación aplicada y registros persistidos | Pendiente de pruebas remotas |
+| Jefatura | Consultar su obra, inventario, préstamos abiertos, alertas, Kardex, tareas, incidencias y asistencia mensual | Crear herramientas, registrar préstamos/devoluciones, despachar pedidos, cambiar stock o firmar por Operarios | Captura de consulta permitida y error esperado al intentar una acción ajena | Pendiente de pruebas remotas |
+| Bodeguero | Crear/actualizar herramientas, consultar inventario, registrar préstamos/devoluciones, crear materiales, ajustar stock, procesar pedidos y consultar Kardex | Consultar obras no asignadas, aprobar cuentas, crear obras o cambiar roles | Alta, consulta, actualización, mantenimiento, devolución y Kardex persistido | Sin ejecutar por sesión perdida |
+| Operario | Ver tareas/incidencias propias, marcar asistencia propia, solicitar materiales, ver préstamos propios y firmar recepción propia | Crear herramientas, actualizar inventario, registrar préstamos/devoluciones ajenas, despachar pedidos, cambiar stock o consultar obras ajenas | Entrada/salida, firma propia, solicitud propia y denegación al intentar operaciones ajenas | Pendiente de pruebas remotas |
+
+#### Chequeos mínimos antes de cada ejecución
+
+- [ ] Aplicar la migración correctiva de hash Kardex y ejecutar
+  `supabase/verify_setup.sql`; todas las filas deben mostrar `OK`.
+- [ ] Iniciar sesión desde la página de acceso sin conservar sesiones antiguas
+  entre roles.
+- [ ] Confirmar obra, rol y correo visibles en el panel sin mostrar la
+  contraseña ni datos personales en la captura.
+- [ ] Usar solo códigos y series que comiencen con `PRUEBA-` y nombres
+  ficticios para herramientas y materiales.
+- [ ] Repetir cada operación permitida una vez para verificar persistencia y
+  una vez como otro rol para verificar denegación.
+- [ ] Capturar el resultado del navegador y el estado remoto, cuando la tabla o
+  RPC permita consultarlo sin exponer datos personales.
+- [ ] Verificar que una operación fallida no muestre éxito, no altere la vista
+  local ni genere filas Kardex inexistentes.
+
 4. **Trabajador**
    - [x] Implementar marcaje propio de entrada/salida y resumen mensual de
      asistencia.
@@ -283,6 +309,12 @@ la base Supabase remota ni con usuarios reales.
      aplicación las registra y consulta, pero no las envía.
    - [ ] Probar escáner/cámara, préstamos concurrentes, devoluciones repetidas
      y evidencia obligatoria si hay daño.
+   - [ ] Aplicar y probar el alta masiva de herramientas: máximo 100 unidades,
+     etiquetas y series únicas por lote, marca opcional de prueba y Kardex.
+   - [ ] Confirmar que “En préstamo” solo se muestra con un préstamo abierto;
+     mantenimiento, daño y baja se muestran como estados físicos independientes.
+   - [ ] Verificar el resumen de stock por modelo junto con el listado individual
+     de etiquetas y estados en Bodega, Jefatura y Operario.
 
 ### Mejoras transversales
 

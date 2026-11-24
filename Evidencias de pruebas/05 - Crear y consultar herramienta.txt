@@ -1,0 +1,26 @@
+ESCENARIO 05 - CREAR Y CONSULTAR HERRAMIENTA
+
+Estado: Pendiente de ejecucion y captura.
+Fecha de ejecucion: No ejecutada en esta revision.
+
+Objetivo:
+Comprobar que Bodega puede registrar una herramienta y su cantidad disponible
+y verla inmediatamente en el inventario de la obra.
+
+Pasos para la prueba:
+1. Iniciar sesion como Bodeguero en un entorno de prueba.
+2. Crear una herramienta ficticia con codigo y serie de prueba no usados.
+3. Guardar el registro.
+4. Buscar el codigo en el inventario y verificar nombre y estado inicial.
+
+Resultado esperado:
+El alta se confirma y el registro aparece una sola vez en el inventario de
+la obra.
+
+Resultado observado:
+No ejecutado. No hay captura ni comprobacion actual de un alta de
+herramienta.
+
+Capturas requeridas:
+05 - Crear herramienta.png
+05 - Herramienta en inventario.png

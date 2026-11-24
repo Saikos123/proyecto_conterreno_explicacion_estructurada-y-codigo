@@ -35,6 +35,9 @@ let historyRows = [];
 let historyGeneration = 0;
 let attendanceRows = [];
 let attendanceGeneration = 0;
+let toolRows = [];
+let toolSearch = '';
+let toolStatusFilter = 'TODOS';
 
 function roleWorkspaceReady() {
     return Boolean(supabaseClient && currentUser && !state.isOffline);
@@ -438,7 +441,7 @@ function renderManagerWorkspace() {
 
 function renderStorekeeperWorkspace() {
     return `<div class="role-workspace-masonry role-workspace-masonry--compact">
-        ${workspaceCard('Lectura de etiqueta y alta rápida', 'Un lector QR/barra que actúa como teclado puede escribir el código y confirmar con Enter. También se puede ingresar manualmente.', `
+        ${workspaceCard('Lectura de etiqueta', 'Escanea con cámara o busca manualmente una etiqueta/QR existente.', `
             <form onsubmit="findToolByTag(event)" class="flex gap-2">
                 <input id="tool-scan-code" required placeholder="Escanea o escribe el código QR"
                     class="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 text-sm">
@@ -450,14 +453,37 @@ function renderStorekeeperWorkspace() {
             </div>
             <video id="tool-camera-preview" class="mt-3 hidden max-h-64 w-full rounded-xl bg-slate-950 object-cover" playsinline></video>
             <p id="tool-camera-status" class="mt-2 text-xs text-slate-500"></p>
-            <div id="tool-scan-result" class="mt-3 text-sm text-slate-600"></div>
-            <form onsubmit="storekeeperCreateTool(event)" class="mt-5 grid gap-3 sm:grid-cols-2 border-t border-slate-100 pt-4">
-                ${workspaceField('Código QR / etiqueta', 'new-tool-tag')}
-                ${workspaceField('Número de serie', 'new-tool-serial')}
-                ${workspaceField('Nombre de herramienta', 'new-tool-name')}
-                ${workspaceField('Descripción', 'new-tool-description', 'text', false)}
-                <button class="sm:col-span-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">Registrar herramienta</button>
-            </form>`, 'fa-qrcode', 'storekeeper-scan')}
+            <div id="tool-scan-result" class="mt-3 text-sm text-slate-600"></div>`, 'fa-qrcode', 'storekeeper-scan')}
+        ${workspaceCard('Registrar herramienta y stock', 'Alta inmediata de una unidad o lote de hasta 100 unidades.', `
+            <form onsubmit="storekeeperCreateToolStock(event)" class="mt-5 grid gap-3 sm:grid-cols-2 border-t border-slate-100 pt-4">
+                ${workspaceField('Nombre de la herramienta', 'bulk-tool-name')}
+                ${workspaceField('Cantidad de unidades', 'bulk-tool-quantity', 'number', true, 'min="1" max="100" step="1" value="1"')}
+                ${workspaceField('Código QR / etiqueta base (opcional)', 'bulk-tool-tag', 'text', false)}
+                ${workspaceField('Número de serie base (opcional)', 'bulk-tool-serial', 'text', false)}
+                ${workspaceField('Descripción', 'bulk-tool-description', 'text', false)}
+                <button class="sm:col-span-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">Registrar herramienta y stock</button>
+            </form>`, 'fa-box-open', 'storekeeper-tool-registration')}
+        ${workspaceCard('Inventario de herramientas', 'Consulta, filtra y exporta el stock individual de la obra.', `
+            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                <label class="block text-xs font-bold text-slate-700">Buscar por nombre, etiqueta o serie
+                    <input id="tool-inventory-search" type="search" oninput="filterToolInventory(this.value)" placeholder="Ej. Taladro, HERR-..." class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                </label>
+                <label class="block text-xs font-bold text-slate-700">Estado
+                    <select id="tool-inventory-status" onchange="filterToolInventoryStatus(this.value)" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                        <option value="TODOS">Todos</option>
+                        <option value="DISPONIBLE">Disponible</option>
+                        <option value="EN_USO">En préstamo</option>
+                        <option value="EN_MANTENCION">En mantención</option>
+                        <option value="DANIADO">Dañado</option>
+                        <option value="DADO_DE_BAJA">Dado de baja</option>
+                    </select>
+                </label>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" onclick="exportToolInventoryXlsx()" class="min-h-10 rounded-lg bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white">Exportar Excel (.xlsx)</button>
+                <button type="button" onclick="printToolInventoryPdf()" class="min-h-10 rounded-lg bg-slate-100 px-3 py-2.5 text-xs font-bold text-slate-800">Imprimir / guardar PDF</button>
+            </div>
+            <div id="tool-inventory-results" class="mt-4 max-h-[32rem] overflow-auto rounded-xl border border-slate-200 p-3 text-sm text-slate-600">Cargando inventario...</div>`, 'fa-screwdriver-wrench', 'storekeeper-tool-inventory')}
         ${workspaceCard('Registrar préstamo', 'Selecciona la herramienta disponible y el trabajador asignado a esta obra.', `
             <form onsubmit="storekeeperRegisterLoan(event)" class="grid gap-3">
                 ${workspaceSelect('Herramienta disponible', 'loan-tool-select', '<option value="">Cargando herramientas...</option>')}
@@ -1443,58 +1469,233 @@ async function loadWorkers() {
 
 async function loadTools() {
     const generation = roleWorkspaceGeneration;
-    const { data, error } = await supabaseClient.from('equipos_herramientas')
-        .select('id_equipo,codigo_tag_iot,numero_serie,nombre,descripcion,estado_fisico,disponible')
-        .eq('proyecto_id', state.currentProject).eq('activo', true).order('nombre');
+    const [{ data, error }, { data: openLoans, error: loanError }] = await Promise.all([
+        supabaseClient.from('equipos_herramientas')
+        .select('id_equipo,codigo_tag_iot,numero_serie,nombre,descripcion,estado_fisico,disponible,creado_en')
+        .eq('proyecto_id', state.currentProject).eq('activo', true).order('nombre'),
+        supabaseClient.from('prestamos')
+        .select('id_equipo')
+        .eq('proyecto_id', state.currentProject)
+        .is('fecha_hora_devolucion', null)
+    ]);
     if (generation !== roleWorkspaceGeneration) return;
     if (error) {
         showToast(`No se pudo cargar el inventario: ${error.message}`, 'error');
         return;
     }
+    if (loanError) {
+        showToast(`No se pudo confirmar qué herramientas están prestadas: ${loanError.message}`, 'error');
+    }
+    const loanIds = new Set((openLoans || []).map(loan => loan.id_equipo));
+    toolRows = (data || []).map(tool => ({ ...tool, en_prestamo: loanIds.has(tool.id_equipo) }));
+    renderToolInventory();
     const available = (data || []).filter(tool => tool.disponible && tool.estado_fisico === 'OPTIMO');
     const select = document.getElementById('loan-tool-select');
     if (select) select.innerHTML = '<option value="">Selecciona una herramienta disponible</option>' +
         available.map(tool => `<option value="${tool.id_equipo}">${escapeHtml(tool.nombre)} · ${escapeHtml(tool.codigo_tag_iot)}</option>`).join('');
-    const target = document.getElementById('tool-scan-result');
-    if (target) {
-        target.innerHTML = data?.length
-            ? `<div class="max-h-[420px] overflow-auto"><table class="w-full min-w-[720px] text-left text-xs"><thead class="sticky top-0 bg-white text-slate-500"><tr><th class="p-2">Herramienta</th><th class="p-2">Etiqueta</th><th class="p-2">Estado</th><th class="p-2">Disponibilidad</th><th class="p-2">Acción Bodega</th></tr></thead><tbody>${data.map(tool =>
-                `<tr class="border-t border-slate-100"><td class="p-2">${escapeHtml(tool.nombre)}</td><td class="p-2">${escapeHtml(tool.codigo_tag_iot)}</td><td class="p-2">${escapeHtml(tool.estado_fisico)}</td><td class="p-2">${tool.disponible ? 'Disponible' : 'En uso'}</td><td class="p-2"><select id="tool-state-${tool.id_equipo}" class="rounded border border-slate-300 p-1"><option value="OPTIMO" ${tool.estado_fisico === 'OPTIMO' ? 'selected' : ''}>Óptimo</option><option value="DANIADO" ${tool.estado_fisico === 'DANIADO' ? 'selected' : ''}>Dañado</option><option value="EN_MANTENCION" ${tool.estado_fisico === 'EN_MANTENCION' ? 'selected' : ''}>En mantención</option><option value="DADO_DE_BAJA" ${tool.estado_fisico === 'DADO_DE_BAJA' ? 'selected' : ''}>Dado de baja</option></select><button data-tool-id="${tool.id_equipo}" data-tool-name="${escapeHtml(tool.nombre)}" data-tool-description="${escapeHtml(tool.descripcion || '')}" onclick="storekeeperUpdateTool(this.dataset.toolId,this.dataset.toolName,this.dataset.toolDescription)" class="ml-1 rounded bg-slate-900 px-2 py-1 text-white">Editar</button></td></tr>`
-            ).join('')}</tbody></table></div>`
-            : '<p>No hay herramientas registradas en esta obra.</p>';
+}
+
+function filteredToolRows() {
+    const query = toolSearch.trim().toLowerCase();
+    return toolRows.filter(tool => {
+        const matchesQuery = !query || [
+            tool.nombre,
+            tool.codigo_tag_iot,
+            tool.numero_serie,
+            tool.descripcion
+        ].some(value => String(value || '').toLowerCase().includes(query));
+        let matchesStatus = true;
+        if (toolStatusFilter === 'DISPONIBLE') matchesStatus = tool.disponible && tool.estado_fisico === 'OPTIMO';
+        if (toolStatusFilter === 'EN_USO') matchesStatus = tool.en_prestamo === true;
+        if (toolStatusFilter === 'EN_MANTENCION') matchesStatus = tool.estado_fisico === 'EN_MANTENCION';
+        if (toolStatusFilter === 'DANIADO') matchesStatus = tool.estado_fisico === 'DANIADO';
+        if (toolStatusFilter === 'DADO_DE_BAJA') matchesStatus = tool.estado_fisico === 'DADO_DE_BAJA';
+        return matchesQuery && matchesStatus;
+    });
+}
+
+function filterToolInventory(query) {
+    toolSearch = query || '';
+    renderToolInventory();
+}
+
+function filterToolInventoryStatus(status) {
+    toolStatusFilter = status || 'TODOS';
+    renderToolInventory();
+}
+
+function renderToolInventory() {
+    const target = document.getElementById('tool-inventory-results');
+    if (!target) return;
+    const stockByName = new Map();
+    for (const tool of toolRows) {
+        const model = tool.nombre || 'Sin nombre';
+        const stock = stockByName.get(model) || { total: 0, disponible: 0, enUso: 0 };
+        stock.total++;
+        if (tool.disponible && tool.estado_fisico === 'OPTIMO') stock.disponible++;
+        if (tool.en_prestamo) stock.enUso++;
+        stockByName.set(model, stock);
     }
+    const rows = filteredToolRows();
+    target.innerHTML = rows.length
+        ? `<div class="max-h-[32rem] overflow-auto"><table class="w-full min-w-[820px] text-left text-xs"><thead class="sticky top-0 bg-white text-slate-500"><tr><th class="p-2">Herramienta y stock</th><th class="p-2">Etiqueta</th><th class="p-2">Serie</th><th class="p-2">Estado</th><th class="p-2">Disponibilidad</th><th class="p-2">Fecha de registro</th><th class="p-2">Acciones</th></tr></thead><tbody>${rows.map(tool => {
+            const stock = stockByName.get(tool.nombre) || { total: 0, disponible: 0, enUso: 0 };
+            return `<tr class="border-t border-slate-100"><td class="p-2"><strong class="block text-slate-900">${escapeHtml(tool.nombre)}</strong><span class="mt-1 inline-block rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">Stock ${stock.total} · Disponible ${stock.disponible} · En préstamo ${stock.enUso}</span></td><td class="p-2">${escapeHtml(tool.codigo_tag_iot)}</td><td class="p-2">${escapeHtml(tool.numero_serie)}</td><td class="p-2"><span id="tool-status-label-${tool.id_equipo}" class="inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${tool.estado_fisico === 'OPTIMO' ? 'bg-emerald-100 text-emerald-800' : tool.estado_fisico === 'EN_MANTENCION' ? 'bg-sky-100 text-sky-800' : tool.estado_fisico === 'DANIADO' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-700'}">${escapeHtml(tool.estado_fisico)}</span></td><td class="p-2" id="tool-availability-${tool.id_equipo}">${tool.en_prestamo ? 'En préstamo' : tool.estado_fisico === 'EN_MANTENCION' ? 'En mantenimiento' : tool.estado_fisico === 'DANIADO' ? 'No disponible' : tool.estado_fisico === 'DADO_DE_BAJA' ? 'Dada de baja' : 'Disponible'}</td><td class="whitespace-nowrap p-2 text-slate-500">${escapeHtml(tool.creado_en ? new Date(tool.creado_en).toLocaleString('es-CL') : 'Sin fecha')}</td><td class="p-2"><select id="tool-state-${tool.id_equipo}" data-tool-id="${tool.id_equipo}" aria-label="Cambiar estado de ${escapeHtml(tool.nombre)}" onchange="storekeeperChangeToolState(this.dataset.toolId)" class="min-h-9 rounded-lg border border-slate-300 px-2 py-1"><option value="OPTIMO" ${tool.estado_fisico === 'OPTIMO' ? 'selected' : ''}>Óptimo</option><option value="DANIADO" ${tool.estado_fisico === 'DANIADO' ? 'selected' : ''}>Dañado</option><option value="EN_MANTENCION" ${tool.estado_fisico === 'EN_MANTENCION' ? 'selected' : ''}>En mantención</option><option value="DADO_DE_BAJA" ${tool.estado_fisico === 'DADO_DE_BAJA' ? 'selected' : ''}>Dado de baja</option></select><button data-tool-id="${tool.id_equipo}" data-tool-name="${escapeHtml(tool.nombre)}" data-tool-tag="${escapeHtml(tool.codigo_tag_iot)}" onclick="storekeeperRetireTool(this.dataset.toolId,this.dataset.toolName,this.dataset.toolTag)" class="ml-1 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-bold text-rose-700">Dar de baja</button></td></tr>`;
+        }).join('')}</tbody></table></div>`
+        : '<p>No hay herramientas que coincidan con el filtro.</p>';
+}
+
+function exportToolInventoryXlsx() {
+    const rows = filteredToolRows();
+    if (!rows.length) {
+        showToast('No hay herramientas filtradas para exportar.', 'error');
+        return;
+    }
+    if (!window.XLSX) {
+        showToast('No se cargó el exportador de Excel. Revisa la conexión e inténtalo nuevamente.', 'error');
+        return;
+    }
+    const sheet = window.XLSX.utils.json_to_sheet(rows.map(tool => ({
+        Herramienta: tool.nombre,
+        Etiqueta: tool.codigo_tag_iot,
+        Serie: tool.numero_serie,
+        Estado: tool.estado_fisico,
+        Disponibilidad: tool.en_prestamo
+            ? 'En préstamo'
+            : tool.estado_fisico === 'EN_MANTENCION'
+                ? 'En mantenimiento'
+                : tool.estado_fisico === 'DANIADO'
+                    ? 'No disponible'
+                    : tool.estado_fisico === 'DADO_DE_BAJA'
+                        ? 'Dada de baja'
+                        : 'Disponible',
+        'Fecha de registro': tool.creado_en ? new Date(tool.creado_en).toLocaleString('es-CL') : '',
+        Descripcion: tool.descripcion || ''
+    })));
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, sheet, 'Inventario');
+    window.XLSX.writeFile(workbook, `inventario-herramientas-${dateInputValue(new Date())}.xlsx`);
+}
+
+function printToolInventoryPdf() {
+    const rows = filteredToolRows();
+    if (!rows.length) {
+        showToast('No hay herramientas filtradas para imprimir.', 'error');
+        return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('El navegador bloqueó la ventana de impresión. Permite ventanas emergentes para exportar a PDF.', 'error');
+        return;
+    }
+    printWindow.opener = null;
+    const bodyRows = rows.map(tool => {
+        const availability = tool.en_prestamo
+            ? 'En préstamo'
+            : tool.estado_fisico === 'EN_MANTENCION'
+                ? 'En mantenimiento'
+                : tool.estado_fisico === 'DANIADO'
+                    ? 'No disponible'
+                    : tool.estado_fisico === 'DADO_DE_BAJA'
+                        ? 'Dada de baja'
+                        : 'Disponible';
+        return `<tr><td>${escapeHtml(tool.nombre)}</td><td>${escapeHtml(tool.codigo_tag_iot)}</td><td>${escapeHtml(tool.numero_serie)}</td><td>${escapeHtml(tool.estado_fisico)}</td><td>${availability}</td><td>${escapeHtml(tool.creado_en ? new Date(tool.creado_en).toLocaleString('es-CL') : 'Sin fecha')}</td></tr>`;
+    }).join('');
+    printWindow.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Inventario de herramientas</title><style>body{font:12px Arial,sans-serif;margin:24px}h1{font-size:20px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#f3f4f6}@media print{body{margin:10mm}}</style></head><body><h1>Inventario de herramientas · ConTerreno</h1><table><thead><tr><th>Herramienta</th><th>Etiqueta</th><th>Serie</th><th>Estado</th><th>Disponibilidad</th><th>Fecha de registro</th></tr></thead><tbody>${bodyRows}</tbody></table><script>window.onload=function(){window.print();};<\/script></body></html>`);
+    printWindow.document.close();
 }
 
 async function loadAvailableTools(targetId) {
     const generation = roleWorkspaceGeneration;
-    const { data, error } = await supabaseClient.from('equipos_herramientas')
-        .select('codigo_tag_iot,numero_serie,nombre,estado_fisico,disponible')
-        .eq('proyecto_id', state.currentProject).eq('activo', true).order('nombre');
+    const [{ data, error }, { data: openLoans, error: loanError }] = await Promise.all([
+        supabaseClient.from('equipos_herramientas')
+            .select('id_equipo,codigo_tag_iot,numero_serie,nombre,estado_fisico,disponible')
+            .eq('proyecto_id', state.currentProject).eq('activo', true).order('nombre'),
+        supabaseClient.from('prestamos')
+            .select('id_equipo')
+            .eq('proyecto_id', state.currentProject)
+            .is('fecha_hora_devolucion', null)
+    ]);
     if (generation !== roleWorkspaceGeneration || !document.getElementById(targetId)) return;
     if (error) {
         showWorkspaceError(targetId, new Error(error.message));
         return;
     }
-    const tools = data || [];
+    if (loanError) {
+        showWorkspaceError(targetId, new Error(loanError.message));
+        return;
+    }
+    const loanIds = new Set((openLoans || []).map(loan => loan.id_equipo));
+    const tools = (data || []).map(tool => ({ ...tool, en_prestamo: loanIds.has(tool.id_equipo) }));
+    const stockByName = new Map();
+    for (const tool of tools) {
+        const model = tool.nombre || 'Sin nombre';
+        const stock = stockByName.get(model) || { total: 0, disponible: 0, enUso: 0 };
+        stock.total++;
+        if (tool.disponible && tool.estado_fisico === 'OPTIMO') stock.disponible++;
+        if (tool.en_prestamo) stock.enUso++;
+        stockByName.set(model, stock);
+    }
     document.getElementById(targetId).innerHTML = tools.length
-        ? `<table class="w-full min-w-[460px] text-left text-xs"><thead class="text-slate-500"><tr><th class="p-2">Herramienta</th><th class="p-2">Etiqueta</th><th class="p-2">Estado</th><th class="p-2">Disponibilidad</th></tr></thead><tbody>${tools.map(tool =>
-            `<tr class="border-t border-slate-100"><td class="p-2">${escapeHtml(tool.nombre)}</td><td class="p-2">${escapeHtml(tool.codigo_tag_iot)}</td><td class="p-2">${escapeHtml(tool.estado_fisico)}</td><td class="p-2">${tool.disponible ? 'Disponible' : 'En uso'}</td></tr>`
-        ).join('')}</tbody></table>`
+        ? `<table class="w-full min-w-[460px] text-left text-xs"><thead class="text-slate-500"><tr><th class="p-2">Herramienta y stock</th><th class="p-2">Etiqueta</th><th class="p-2">Estado</th><th class="p-2">Disponibilidad</th></tr></thead><tbody>${tools.map(tool => {
+            const stock = stockByName.get(tool.nombre) || { total: 0, disponible: 0, enUso: 0 };
+            const availability = tool.en_prestamo
+                ? 'En préstamo'
+                : tool.estado_fisico === 'EN_MANTENCION'
+                    ? 'En mantenimiento'
+                    : tool.estado_fisico === 'DANIADO'
+                        ? 'No disponible'
+                        : tool.estado_fisico === 'DADO_DE_BAJA'
+                            ? 'Dada de baja'
+                            : 'Disponible';
+            return `<tr class="border-t border-slate-100"><td class="p-2"><strong class="block text-slate-900">${escapeHtml(tool.nombre)}</strong><span class="mt-1 inline-block rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">Stock ${stock.total} · Disponible ${stock.disponible} · En préstamo ${stock.enUso}</span></td><td class="p-2">${escapeHtml(tool.codigo_tag_iot)}</td><td class="p-2">${escapeHtml(tool.estado_fisico)}</td><td class="p-2">${availability}</td></tr>`;
+        }).join('')}</tbody></table>`
         : '<p>No hay herramientas registradas en esta obra.</p>';
 }
 
-async function storekeeperUpdateTool(toolId, currentName, currentDescription) {
-    const name = window.prompt('Nombre de la herramienta:', currentName);
-    if (!name) return;
-    const description = window.prompt('Descripción:', currentDescription);
-    if (description === null) return;
+async function storekeeperChangeToolState(toolId) {
+    const stateSelect = document.getElementById(`tool-state-${toolId}`);
+    if (!stateSelect) return;
+    const nextState = stateSelect.value;
+    const tool = toolRows.find(row => row.id_equipo === toolId);
+    if (!tool) {
+        showToast('No se encontró la herramienta en el inventario cargado.', 'error');
+        return;
+    }
     await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_actualizar_herramienta', {
         p_proyecto_id: state.currentProject,
         p_id_equipo: toolId,
-        p_nombre: name.trim(),
-        p_descripcion: description.trim(),
-        p_estado_fisico: document.getElementById(`tool-state-${toolId}`).value
-    }), 'Herramienta actualizada.');
+        p_nombre: tool.nombre,
+        p_descripcion: tool.descripcion || '',
+        p_estado_fisico: nextState
+    }), nextState === 'EN_MANTENCION'
+        ? 'Herramienta enviada a mantenimiento y retirada de préstamos disponibles.'
+        : nextState === 'DANIADO'
+            ? 'Herramienta marcada como dañada y retirada de préstamos disponibles.'
+            : nextState === 'DADO_DE_BAJA'
+                ? 'Estado de baja registrado. Usa "Dar de baja" para confirmar la retirada definitiva.'
+                : 'Herramienta restaurada a estado óptimo.');
+    await loadTools();
+}
+
+async function storekeeperRetireTool(toolId, toolName, toolTag) {
+    const reason = window.prompt(
+        `Motivo de la baja de "${toolName}" (${toolTag}). Mínimo 3 caracteres:`
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+        showToast('El motivo de la baja debe tener al menos 3 caracteres.', 'error');
+        return;
+    }
+    if (!window.confirm(`Confirmar baja de "${toolName}" (${toolTag})?\nLa herramienta desaparecerá del inventario activo, pero se conservará su historial.`)) {
+        return;
+    }
+    await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_retirar_herramienta', {
+        p_proyecto_id: state.currentProject,
+        p_id_equipo: toolId,
+        p_motivo: reason.trim()
+    }), 'Herramienta dada de baja y retirada del inventario activo.');
+    await loadTools();
 }
 
 async function findToolByTag(event) {
@@ -1507,8 +1708,8 @@ async function findToolByTag(event) {
     const result = document.getElementById('tool-scan-result');
     if (error) return showWorkspaceError('tool-scan-result', new Error(error.message));
     result.insertAdjacentHTML('afterbegin', data
-        ? `<div class="mb-3 rounded-lg ${data.disponible ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'} p-3">
-            <strong>${escapeHtml(data.nombre)}</strong> · ${escapeHtml(data.estado_fisico)} · ${data.disponible ? 'Disponible' : 'No disponible'}
+        ? `<div class="mb-3 rounded-lg ${data.disponible && data.estado_fisico === 'OPTIMO' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'} p-3">
+            <strong>${escapeHtml(data.nombre)}</strong> · ${escapeHtml(data.estado_fisico)} · ${data.estado_fisico === 'EN_MANTENCION' ? 'En mantenimiento' : data.estado_fisico === 'DANIADO' ? 'No disponible' : data.estado_fisico === 'DADO_DE_BAJA' ? 'Dada de baja' : data.disponible ? 'Disponible' : 'No disponible'}
         </div>`
         : '<p class="mb-3 rounded-lg bg-rose-50 p-3 text-rose-800">No se encontró una herramienta activa con esa etiqueta en esta obra.</p>');
 }
@@ -1575,15 +1776,28 @@ function stopToolCameraScan() {
     }
 }
 
-async function storekeeperCreateTool(event) {
+async function storekeeperCreateToolStock(event) {
     event.preventDefault();
-    await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_crear_herramienta', {
+    const quantity = Number(document.getElementById('bulk-tool-quantity').value);
+    const name = document.getElementById('bulk-tool-name').value.trim();
+    if (!name) {
+        showToast('Indica el nombre del modelo de herramienta.', 'error');
+        return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
+        showToast('Indica una cantidad entre 1 y 100 unidades.', 'error');
+        return;
+    }
+    await workspaceAction(async () => supabaseClient.rpc('fn_conterreno_registrar_stock_herramientas', {
         p_proyecto_id: state.currentProject,
-        p_codigo_tag_iot: document.getElementById('new-tool-tag').value.trim(),
-        p_numero_serie: document.getElementById('new-tool-serial').value.trim(),
-        p_nombre: document.getElementById('new-tool-name').value.trim(),
-        p_descripcion: document.getElementById('new-tool-description').value.trim() || null
-    }), 'Herramienta registrada.');
+        p_nombre: name,
+        p_descripcion: document.getElementById('bulk-tool-description').value.trim() || null,
+        p_cantidad: quantity,
+        p_es_prueba: false,
+        p_codigo_base: document.getElementById('bulk-tool-tag').value.trim() || null,
+        p_serie_base: document.getElementById('bulk-tool-serial').value.trim() || null
+    }), quantity === 1 ? 'Herramienta registrada con su stock disponible.' : `${quantity} unidad(es) registrada(s) en el inventario.`);
+    await loadTools();
 }
 
 async function storekeeperRegisterLoan(event) {

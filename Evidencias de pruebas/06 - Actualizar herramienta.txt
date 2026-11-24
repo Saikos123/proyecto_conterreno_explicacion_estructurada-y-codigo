@@ -1,0 +1,29 @@
+ESCENARIO 06 - ACTUALIZAR HERRAMIENTA
+
+Estado: Pendiente de ejecucion y captura.
+Fecha de ejecucion: No ejecutada en esta revision.
+
+Objetivo:
+Comprobar que Bodega puede cambiar el estado de una herramienta y que una
+herramienta en mantenimiento deja de estar disponible para despacho.
+
+Pasos para la prueba:
+1. Usar exclusivamente una herramienta creada con fines de prueba para el
+   escenario 05 y registrar su etiqueta, serie y fecha de creación.
+2. Capturar o anotar su estado inicial.
+3. Seleccionar "En mantención" en el selector de la misma fila; el cambio se
+   guarda automáticamente.
+4. Comprobar que el estado, el sello y la disponibilidad cambian
+   inmediatamente en la fila y persisten al recargar.
+5. Confirmar que ya no se puede seleccionar para un nuevo préstamo.
+
+Resultado esperado:
+El cambio persiste y la herramienta no se ofrece para despacho mientras
+este en mantenimiento.
+
+Resultado observado:
+No ejecutado. No hay captura ni comprobacion actual de la actualizacion.
+
+Capturas requeridas:
+06 - Estado de herramienta en mantenimiento.png
+06 - Herramienta no disponible para despacho.png

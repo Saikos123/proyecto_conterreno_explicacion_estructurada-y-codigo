@@ -1,0 +1,32 @@
+ESCENARIO 07 - ELIMINAR HERRAMIENTA DE PRUEBA
+
+Estado: Pendiente de ejecucion y captura.
+Fecha de ejecucion: No ejecutada en esta revision.
+
+Objetivo:
+Comprobar la confirmacion de baja logica y que desaparece del inventario
+activo sin borrar el registro ni su trazabilidad.
+
+Pasos para la prueba:
+1. En un entorno de prueba, seleccionar exclusivamente el registro ficticio
+   creado para el escenario 05.
+2. Iniciar la accion "Dar de baja", informar un motivo y capturar el dialogo
+   de confirmacion.
+3. Confirmar la baja logica.
+4. Buscar nuevamente el codigo y comprobar que ya no aparece.
+
+Resultado esperado:
+El sistema requiere confirmacion, conserva el registro y su historial,
+marca la herramienta como dada de baja y la retira del inventario activo.
+
+Resultado observado:
+No ejecutado. No se ha retirado ningun registro para esta prueba.
+
+Capturas requeridas:
+07 - Confirmar eliminacion.png
+07 - Inventario despues de eliminacion.png
+
+Precaucion:
+No ejecutar sobre herramientas existentes o datos reales. Si el sistema
+impide eliminar un registro con historial asociado, documentar ese resultado
+en vez de intentar eludir la restriccion.

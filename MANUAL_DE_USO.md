@@ -169,6 +169,18 @@ del servidor Auth; configura también el timeout remoto y sus límites nativos.
 
 - En la tarjeta del escáner, ingresa una etiqueta o usa la cámara para buscar
   una herramienta.
+- **Registrar herramienta y stock** crea una unidad con cantidad 1 o varias
+  unidades en lote hasta 100. Los campos de etiqueta y serie son opcionales;
+  si se omiten, el sistema genera identificadores únicos.
+- **Inventario de herramientas** es una cuadrícula independiente con búsqueda
+  por nombre, etiqueta o serie y filtro por estado. Puede exportarse a Excel
+  o imprimir/guardar como PDF; la exportación contiene solo las filas filtradas.
+  Las filas muestran la fecha y hora de registro en hora local de Chile.
+- El cambio de estado se guarda al seleccionar una opción en la misma fila:
+  Óptimo, Dañado, En mantención o Dado de baja. Las herramientas no óptimas
+  dejan de estar disponibles para nuevos préstamos.
+- “En préstamo” significa que existe un préstamo abierto real. En mantención,
+  dañada o dada de baja no se muestra como “En uso”.
 - Registra herramientas, préstamos y devoluciones desde las tarjetas
   correspondientes.
 - Cada préstamo requiere fecha prevista de devolución; el panel señala
